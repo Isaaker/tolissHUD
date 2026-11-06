@@ -250,6 +250,17 @@ def sync(groups: list[TodoGroup], api: GitHubAPI, apply: bool) -> dict[str, int]
     return stats
 
 
+def is_valid_repo(repo: str) -> bool:
+    owner, separator, name = repo.partition("/")
+    return bool(
+        separator
+        and owner
+        and name
+        and "/" not in name
+        and not any(character.isspace() for character in repo)
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--file", type=Path, default=Path("TODO.md"))
@@ -269,7 +280,7 @@ def main() -> int:
         stats = sync(groups, api, apply=False)
         print("DRY RUN — no GitHub API writes were made.")
     else:
-        if not args.repo or not re.fullmatch(r"[^/\s]+/[^/\s]+", args.repo):
+        if not args.repo or not is_valid_repo(args.repo):
             parser.error("--repo OWNER/REPOSITORY or GITHUB_REPOSITORY is required with --apply")
         token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
         if not token:
