@@ -1,6 +1,6 @@
 # XPHUD — ToLiss A32X Edition
 
-**Version 2.2.0** · Maintained by **Control_TWR**  
+**Version 2.2.0** · Maintained by **Isaaker** (Control_TWR)  
 An unofficial Airbus-inspired head-up display for **ToLiss A319 / A320 / A321** aircraft in **X-Plane 12**, implemented as a FlyWithLua script.
 
 This edition is derived from **XPHUD for FlyWithLua v2.0.0 by xbard**. It is an independent community modification and is not affiliated with, endorsed by, or supported by xbard, XPConnect, ToLiss, Airbus, or Laminar Research.
