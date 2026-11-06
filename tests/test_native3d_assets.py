@@ -5,6 +5,7 @@ from PIL import Image
 ROOT = Path(__file__).resolve().parents[1]
 OBJ = ROOT / "native3d" / "objects" / "xphud_native_combiner.obj"
 PNG = ROOT / "native3d" / "objects" / "xphud_native_combiner.png"
+PLUGIN = ROOT / "native3d" / "src" / "plugin.cpp"
 
 
 class Native3DAssetTests(unittest.TestCase):
@@ -59,6 +60,18 @@ class Native3DAssetTests(unittest.TestCase):
             self.assertEqual(metal.getextrema(), (255, 255))
             self.assertGreater(pane.getextrema()[0], 0)
             self.assertLess(pane.getextrema()[1], 255)
+
+    def test_position_uses_pilot_eye_reference(self):
+        source = PLUGIN.read_text(encoding="utf-8")
+        for dataref in (
+            "sim/aircraft/view/acf_peX",
+            "sim/aircraft/view/acf_peY",
+            "sim/aircraft/view/acf_peZ",
+        ):
+            self.assertIn(dataref, source)
+        self.assertIn("double y = -0.425", source)
+        self.assertIn("double z = -0.800", source)
+        self.assertIn("Print diagnostics to Log.txt", source)
 
 
 if __name__ == "__main__":
