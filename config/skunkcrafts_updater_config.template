@@ -1,0 +1,8 @@
+# Build template. tools/build_release.py creates the actual file at release time.
+name|XPHUD ToLiss A32X
+module|__PRODUCTION_DEPOT_URL__
+version|__VERSION__
+locked|false
+zone|custom
+changelog|changelog.txt
+readme|readme.txt

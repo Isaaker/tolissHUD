@@ -1,0 +1,7 @@
+# EXAMPLE ONLY — PRIVATE BETA TESTER CONFIGURATION
+# Rename to skunkcrafts_updater_beta.cfg and give only to invited testers.
+# Do not include this file in stable releases or the production depot.
+# Keep the production skunkcrafts_updater.cfg pointing to the production depot.
+module|https://example.invalid/xphud-beta
+zone|custom
+enabled|true

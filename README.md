@@ -1,6 +1,6 @@
 # XPHUD — ToLiss A32X Edition
 
-**Version 2.2.0** · Maintained by **Isaaker** (Control_TWR)  
+**Version 2.2.0** · Maintained by **Control_TWR**  
 An unofficial Airbus-inspired head-up display for **ToLiss A319 / A320 / A321** aircraft in **X-Plane 12**, implemented as a FlyWithLua script.
 
 This edition is derived from **XPHUD for FlyWithLua v2.0.0 by xbard**. It is an independent community modification and is not affiliated with, endorsed by, or supported by xbard, XPConnect, ToLiss, Airbus, or Laminar Research.
@@ -144,7 +144,7 @@ When reporting a problem, include your X-Plane version, FlyWithLua version, ToLi
 
 ## Credits and licence
 
-This edition is derived from **XPHUD for FlyWithLua v2.0.0** by **xbard** ([xpconnect.me](https://xpconnect.me)). The original upstream README is preserved as [`UPSTREAM_README.md`](UPSTREAM_README.md), and its MIT licence is included unchanged as [`LICENSE`](LICENSE).
+This edition is derived from **XPHUD for FlyWithLua v2.0.0** by **xbard** ([xpconnect.me](https://xpconnect.me)). The original upstream README is preserved as [`UPSTREAM_README.md`](UPSTREAM_README.md). The upstream MIT licence text and xbard copyright notice are retained in [`LICENSE`](LICENSE), with an additional copyright notice for Control_TWR’s own ToLiss A32X modifications.
 
 Credits carried over from the upstream project:
 
@@ -154,6 +154,23 @@ Credits carried over from the upstream project:
 The ToLiss A32X adaptation, data-availability flag handling, combiner presentation, heading / track improvements, ILS source selection and documentation in this edition are maintained by **Control_TWR**.
 
 The software is provided under the MIT licence. See `LICENSE` for the full terms. All aircraft and simulator trademarks remain the property of their respective owners.
+
+
+## Repository automation and maintenance
+
+This repository includes GitHub Actions for Lua syntax / tooling CI, secret scanning (Gitleaks), workflow security auditing (zizmor), Dependabot updates, TODO-to-Issue synchronisation, GitHub Releases and the SkunkCrafts production depot. See [`CONTRIBUTING.md`](CONTRIBUTING.md), [`SECURITY.md`](SECURITY.md) and [`SKUNKCRAFTS_UPDATER.md`](SKUNKCRAFTS_UPDATER.md). Follow [`GITHUB_SETUP.md`](GITHUB_SETUP.md) for the initial GitHub settings and first release.
+
+### TODO.md → GitHub Issues
+
+`TODO.md` remains the source of truth. On changes to `TODO.md` pushed to `main`, the workflow creates or updates **one GitHub Issue per numbered `###` subsection containing checkboxes** (not one issue per checkbox). Stable markers prevent duplicates. Completing all checkboxes closes the matching issue; unchecking a task reopens it at the next synchronisation. Orphaned issues are not deleted. A manual workflow run defaults to dry-run; choose `apply: true` to write changes. The initial push of this TODO file to `main` will create 48 Issues for the currently open roadmap sections (the already-completed section is skipped); run the local dry-run command first if you want to inspect the proposed titles and bodies before pushing.
+
+### Releases and SkunkCrafts Updater
+
+`VERSION` must match the Lua header and a stable `vMAJOR.MINOR.PATCH` tag. Pushing the tag runs the release workflow, creates a manual-install ZIP, publishes a GitHub Release, and deploys a static SkunkCrafts depot to GitHub Pages. The product installs as its own `FlyWithLua/Scripts/XPHUD_ToLiss_A32X` folder; per-folder FlyWithLua management requires SkunkCrafts Updater 4.2.7 or newer. Complete the one-time GitHub Pages setup in [`SKUNKCRAFTS_UPDATER.md`](SKUNKCRAFTS_UPDATER.md) before publishing the first tag.
+
+## Development roadmap
+
+The detailed engineering roadmap, dataref audit tasks, implementation milestones, acceptance criteria and simulator test matrix are maintained in [`TODO.md`](TODO.md). Tasks are prioritised by data integrity and source correctness before advanced HUD symbology.
 
 ## References
 
