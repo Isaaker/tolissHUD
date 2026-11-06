@@ -1,5 +1,8 @@
 // XPHUD Native 3D hardware prototype. Copyright (c) 2026 Control_TWR.
 // Optional physical-looking hardware only; Lua symbology remains a separate 2D overlay.
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
 #include <XPLMDataAccess.h>
 #include <XPLMInstance.h>
 #include <XPLMMenus.h>
