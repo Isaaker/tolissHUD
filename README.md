@@ -171,6 +171,14 @@ This repository includes GitHub Actions for Lua syntax / tooling CI, secret scan
 
 `VERSION` must match the Lua header and a stable `vMAJOR.MINOR.PATCH` tag. Pushing the tag runs the release workflow, creates a manual-install ZIP, publishes a GitHub Release, and deploys a static SkunkCrafts depot to GitHub Pages. The product installs as its own `FlyWithLua/Scripts/XPHUD_ToLiss_A32X` folder; per-folder FlyWithLua management requires SkunkCrafts Updater 4.2.7 or newer. Complete the one-time GitHub Pages setup in [`SKUNKCRAFTS_UPDATER.md`](SKUNKCRAFTS_UPDATER.md) before publishing the first tag.
 
+## Experimental native 3D combiner hardware
+
+The repository now contains an experimental, separately installable C++ / X-Plane SDK prototype for an original cockpit-mounted HUD combiner assembly. The native plugin instantiates an original OBJ8 support frame and translucent pane, positions it from aircraft-body coordinates using the X-Plane coordinate transform, and hides it in external views. The procedural model source is in [native/generate_model.py](native/generate_model.py); build and calibration notes are in [native/README.md](native/README.md).
+
+**Important:** this is physical 3D hardware only. The existing FlyWithLua HUD remains a screen-space overlay; its symbols are not projected onto the glass. This OBJ is not an aircraft cockpit object or ATTR_hud_glass display, and does not provide optical collimation. Do not distribute it as a stable release or enable it in the simulator until the native CI build and a live ToLiss cockpit placement test have passed. No ToLiss aircraft files are modified or redistributed.
+
+The native prototype is built separately from the stable Lua-only v2.2.0 package. Its initial configuration is disabled (enabled = 0) and requires manual position/orientation calibration. See [Issue #54](https://github.com/Isaaker/tolissHUD/issues/54) and section 10.4 of [TODO.md](TODO.md).
+
 ## Development roadmap
 
 The detailed engineering roadmap, dataref audit tasks, implementation milestones, acceptance criteria and simulator test matrix are maintained in [`TODO.md`](TODO.md). Tasks are prioritised by data integrity and source correctness before advanced HUD symbology.

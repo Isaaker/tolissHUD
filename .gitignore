@@ -21,3 +21,9 @@ Output/
 Thumbs.db
 .idea/
 .vscode/
+
+# Generated native 3D model outputs (source is native/generate_model.py)
+/native/assets/xphud_combiner.obj
+/native/assets/xphud_combiner.png
+/native/assets/xphud_combiner_preview.png
+/native/build/

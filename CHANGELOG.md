@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Added an experimental native X-Plane SDK plugin prototype and procedural OBJ8 cockpit combiner hardware generator. The native object is disabled by default and is not part of the stable Lua-only release.
+- Added model transparency / winding checks and C++ aircraft-coordinate transform tests, plus a cross-platform native SDK build workflow.
+- Documented that the 3D pane is physical hardware only: it is not ATTR_hud_glass, does not display the Lua symbology and is not optically collimated.
+
 - Read scalar datarefs with a getter selected from X-Plane's reported type; skip and report unsupported types instead of silently treating a mismatched read as zero.
 - Validate loaded preferences against supported boolean, enum and numeric values, and report load/save failures in the FlyWithLua log.
 

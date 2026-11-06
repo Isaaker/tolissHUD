@@ -595,21 +595,32 @@ FAST 56 describes the A320 Family L5 HUD standard (certified in February 2015) a
 
 ### 10.4 Cockpit-mounted HUD hardware [P2 / native integration]
 
-The current FlyWithLua renderer is a screen-space overlay and cannot attach an OBJ to the cockpit. A physical-looking support and combiner fixed to the aircraft requires a separately installable native X-Plane integration; adding an OBJ file alone is not sufficient. Do not modify or redistribute ToLiss aircraft files, or describe the result as a collimated/certified HUD.
+The FlyWithLua renderer remains a screen-space overlay. A separately installable native X-Plane component is required for physical cockpit hardware. The project must not modify or redistribute ToLiss aircraft files, and the OBJ instance must not be described as a collimated or certified HUD.
 
-- [ ] Define a native X-Plane plugin and OBJ architecture that attaches an original support frame and transparent combiner at a user-calibrated captain-side cockpit position while preserving the existing Lua-only mode.
-- [ ] Verify the required X-Plane SDK APIs, supported simulator versions, plugin build pipeline, packaging, and the interface between the 3D object and Lua symbology.
-- [ ] Create an original, redistributable OBJ model and materials for the support and glass; do not use ToLiss/Airbus meshes, textures, or other proprietary aircraft assets.
-- [ ] Implement aircraft-relative placement, cockpit/external-view visibility, and safe behaviour on aircraft changes, plugin reloads, unsupported aircraft, or a missing native plugin.
-- [ ] Add user calibration for position, orientation, and scale without requiring edits to installed ToLiss aircraft packages.
-- [ ] Verify that the hardware stays attached to the cockpit through aircraft and camera movement, remains hidden in external views, and does not obstruct the outside scene or misregister the Lua symbology.
-- [ ] Document native-plugin installation, removal, supported aircraft, calibration, and the remaining optical/collimation limitations.
+**Prototype implementation status (feature branch: feat/native-3d-cockpit-hardware):**
+
+- [x] Define a separate native X-Plane plugin + OBJ8 architecture while preserving the existing Lua-only mode.
+- [x] Create a procedural, original OBJ8 model generator for the mounting base, support arms, adjustable frame, fasteners and tinted combiner pane. Keep the geometry and texture source in this repository; generate binary OBJ/PNG outputs during CMake configuration.
+- [x] Implement an experimental C++17 plugin using XPLMLoadObjectAsync, XPLMCreateInstance and XPLMInstanceSetPositionDouble from a flight-loop callback.
+- [x] Implement typed reads for aircraft position/attitude and optional model-defined pilot-eye reference coordinates; transform aircraft-body offsets with the published X-Plane roll → pitch → heading convention.
+- [x] Add default-disabled configuration, ToLiss A319/A320/A321 path filtering, a manual toggle command, external-view hiding and fail-safe behaviour when configuration / assets / datarefs are missing.
+- [x] Add CMake packaging, an SDK-based Linux/macOS/Windows GitHub Actions build matrix, OBJ8 structural / alpha / winding tests and C++ coordinate-transform unit tests.
+- [x] Document installation, calibration, attribution, build dependencies and the limitations of the screen-space Lua overlay / plugin-instanced object.
+- [ ] Build against the official X-Plane SDK in GitHub Actions for all target platforms and resolve any SDK/compiler differences.
+- [ ] Install the compiled plugin in X-Plane 12 and verify successful async object loading, texture transparency, clipping, depth order and external-view hiding.
+- [ ] Calibrate the exact mounting position and rotation independently for each supported ToLiss A319/A320/A321 variant; verify aircraft switching and simulator reloads.
+- [ ] Verify the object remains cockpit-fixed through normal camera / seat / FOV changes and does not intersect controls, glareshield, windshield or other cockpit geometry.
+- [ ] Determine whether a permitted aircraft-specific cockpit-object integration point is available for drawing HUD symbology on the pane. Until then, keep Lua symbols in screen space and disclose that they are not optically registered to the 3D glass.
+- [ ] Do not include native binaries in the stable SkunkCrafts depot until official-SDK builds, live simulator tests and a supported-aircraft matrix have passed.
 
 **Acceptance criteria (native integration):**
 
 - [ ] The original support and combiner appear at the calibrated captain-side cockpit location on each explicitly supported ToLiss variant and behave as a cockpit-fixed object through view changes.
 - [ ] The object is absent from external views; the existing Lua-only HUD remains usable when the native plugin is unavailable.
+- [ ] The object does not obstruct the outside scene or overlap controls, glareshield or windshield geometry.
 - [ ] No ToLiss aircraft package needs modification or redistribution, and no claim of real optical collimation is made.
+- [ ] The pane is shown to be translucent in X-Plane, not merely alpha-marked in an asset preview.
+- [ ] The native plugin and its configuration can be removed without leaving modified aircraft files or broken Lua-only functionality.
 
 ---
 
