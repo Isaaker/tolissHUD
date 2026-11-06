@@ -44,6 +44,14 @@ class TodoParserTests(unittest.TestCase):
 
 
 class ReleaseBuilderTests(unittest.TestCase):
+    def test_validate_repo_accepts_github_repository_names(self):
+        self.assertEqual(build_release.validate_repo("owner-name/repo.name_1"), ("owner-name", "repo.name_1"))
+
+    def test_validate_repo_rejects_malformed_names(self):
+        for repo in ("owner", "/repo", "owner/", "owner/repo/extra", "owner/repo-name!", "öwner/repo"):
+            with self.subTest(repo=repo), self.assertRaises(SystemExit):
+                build_release.validate_repo(repo)
+
     def test_version_is_consistent(self):
         self.assertEqual(build_release.read_version(), (ROOT / "VERSION").read_text().strip())
 
