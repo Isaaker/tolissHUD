@@ -1,0 +1,23 @@
+# Local build output
+/dist/
+/build/
+/site/
+*.zip
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+
+# Local X-Plane / FlyWithLua state
+*.prefs
+*.prf
+*.log
+Output/
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
