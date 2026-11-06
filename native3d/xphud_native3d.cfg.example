@@ -1,7 +1,8 @@
 # Runtime calibration is stored under Output/preferences/xphud_native3d.cfg.
-x=-0.5800
-y=1.1500
-z=-7.0000
+# x/y/z are offsets from sim/aircraft/view/acf_peX/Y/Z (pilot-eye reference), in metres.
+x=0.0000
+y=-0.4250
+z=-0.8000
 pitch=0.0000
 heading=0.0000
 roll=0.0000
