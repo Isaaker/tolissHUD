@@ -1,16 +1,21 @@
 from pathlib import Path
 import unittest
+from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[1]
 OBJ = ROOT / "native3d" / "objects" / "xphud_native_combiner.obj"
 PNG = ROOT / "native3d" / "objects" / "xphud_native_combiner.png"
+
 
 class Native3DAssetTests(unittest.TestCase):
     def test_obj8_header_texture_and_png(self):
         text = OBJ.read_text(encoding="ascii")
         self.assertTrue(text.startswith("A\n800\nOBJ\n"))
         self.assertIn("TEXTURE xphud_native_combiner.png", text)
-        self.assertEqual(PNG.read_bytes()[:8], b"\x89PNG\r\n\x1a\n")
+        with Image.open(PNG) as im:
+            im.load()
+            self.assertEqual(im.mode, "RGBA")
+            self.assertEqual(im.size, (128, 128))
 
     def test_vertex_index_counts(self):
         lines = OBJ.read_text(encoding="ascii").splitlines()
@@ -32,13 +37,29 @@ class Native3DAssetTests(unittest.TestCase):
         self.assertNotIn("ATTR_hud_glass", text)
         self.assertIn("ATTR_blend", text)
 
-    def test_transparent_glass_uses_lower_texture_band(self):
+    def test_metal_and_combiner_have_separate_uv_regions(self):
         vertices = [line.split() for line in OBJ.read_text(encoding="ascii").splitlines() if line.startswith("VT ")]
-        pane = [v for v in vertices if float(v[3]) == 0.116 and float(v[6]) > 0.9]
-        self.assertEqual(len(pane), 4)
-        values = [float(v[8]) for v in pane]
-        self.assertGreaterEqual(min(values), 0.0)
-        self.assertLessEqual(max(values), 0.34)
+        self.assertEqual(len(vertices), 40)
+        metal_v = [float(v[8]) for v in vertices[:36]]
+        glass_v = [float(v[8]) for v in vertices[36:]]
+        self.assertGreaterEqual(min(metal_v), 0.62)
+        self.assertLessEqual(max(metal_v), 0.96)
+        self.assertGreaterEqual(min(glass_v), 0.04)
+        self.assertLessEqual(max(glass_v), 0.34)
+
+    def test_combiner_texture_is_translucent_and_metal_is_opaque(self):
+        with Image.open(PNG) as im:
+            im.load()
+            alpha = im.getchannel("A")
+            self.assertEqual(alpha.getextrema()[0], 0)
+            self.assertEqual(alpha.getextrema()[1], 255)
+            # OBJ V=.62-.96 selects the metal band; V=.04-.34 selects the pane band.
+            metal = alpha.crop((0, 4, 128, 49))
+            pane = alpha.crop((0, 84, 128, 124))
+            self.assertEqual(metal.getextrema(), (255, 255))
+            self.assertGreater(pane.getextrema()[0], 0)
+            self.assertLess(pane.getextrema()[1], 255)
+
 
 if __name__ == "__main__":
     unittest.main()
