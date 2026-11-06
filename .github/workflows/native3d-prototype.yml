@@ -119,7 +119,7 @@ jobs:
         run: |
           $target = 'dist/XPHUD_Native3D'
           New-Item -ItemType Directory -Force -Path "$target/64", "$target/objects" | Out-Null
-          Copy-Item 'build/native3d/win.xpl' "$target/64/win.xpl"
+          Copy-Item 'build/native3d/Release/win.xpl' "$target/64/win.xpl"
           Copy-Item -Path @('native3d/objects/xphud_native_combiner.obj','native3d/objects/xphud_native_combiner.png') -Destination "$target/objects/"
           Copy-Item 'native3d/README.md' "$target/README_NATIVE3D.md"
 
