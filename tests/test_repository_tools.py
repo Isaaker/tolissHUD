@@ -85,11 +85,15 @@ class ReleaseBuilderTests(unittest.TestCase):
     def test_builds_manual_zip_and_static_depot(self):
         with tempfile.TemporaryDirectory() as temporary:
             out = Path(temporary) / "dist"
+            out.mkdir()
+            sentinel = out / "keep.txt"
+            sentinel.write_text("preserve existing output")
             result = build_release.build(
                 build_release.read_version(),
                 "control-twr/xphud-toliss-a32x",
                 out,
             )
+            self.assertEqual(sentinel.read_text(), "preserve existing output")
             self.assertTrue(result["archive"].is_file())
             self.assertTrue((result["site"] / "skunkcrafts/main/skunkcrafts_updater.cfg").is_file())
             self.assertTrue((result["site"] / "skunkcrafts/main/skunkcrafts_updater_whitelist.txt").is_file())
