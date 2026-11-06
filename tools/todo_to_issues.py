@@ -150,11 +150,18 @@ def issue_body(group: TodoGroup) -> str:
 
 class GitHubAPI:
     def __init__(self, owner: str, repo: str, token: str, dry_run: bool = False) -> None:
+        if not re.fullmatch(r"[A-Za-z0-9-]+", owner) or owner in {".", ".."}:
+            raise ValueError("GitHub owner must be a valid path segment")
+        if not re.fullmatch(r"[A-Za-z0-9._-]+", repo) or repo in {".", ".."}:
+            raise ValueError("GitHub repository must be a valid path segment")
         self.owner = owner
         self.repo = repo
         self.token = token
         self.dry_run = dry_run
-        self.base = f"https://api.github.com/repos/{owner}/{repo}"
+        self.base = (
+            "https://api.github.com/repos/"
+            f"{urllib.parse.quote(owner, safe='')}/{urllib.parse.quote(repo, safe='')}"
+        )
 
     def request(self, method: str, endpoint: str, payload: dict[str, Any] | None = None) -> Any:
         url = self.base + endpoint
@@ -286,7 +293,10 @@ def main() -> int:
         if not token:
             parser.error("GH_TOKEN or GITHUB_TOKEN is required with --apply")
         owner, repo = args.repo.split("/", 1)
-        api = GitHubAPI(owner, repo, token)
+        try:
+            api = GitHubAPI(owner, repo, token)
+        except ValueError as exc:
+            parser.error(str(exc))
         stats = sync(groups, api, apply=True)
     print("Sync summary: " + ", ".join(f"{key}={value}" for key, value in stats.items()))
     return 0

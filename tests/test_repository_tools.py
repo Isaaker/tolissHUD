@@ -19,6 +19,20 @@ class TodoParserTests(unittest.TestCase):
             with self.subTest(value=value):
                 self.assertFalse(todo_to_issues.is_valid_repo(value))
         self.assertFalse(todo_to_issues.is_valid_repo("!" * 100_000))
+    def test_github_api_rejects_invalid_repository_path_segments(self):
+        for owner, repo in [
+            ("owner/other", "repo"),
+            ("owner", "../other"),
+            ("owner", "repo?state=all"),
+            ("..", "repo"),
+        ]:
+            with self.subTest(owner=owner, repo=repo):
+                with self.assertRaises(ValueError):
+                    todo_to_issues.GitHubAPI(owner, repo, "token")
+
+    def test_github_api_builds_fixed_github_endpoint(self):
+        api = todo_to_issues.GitHubAPI("valid-owner", "valid_repo.name", "token")
+        self.assertEqual(api.base, "https://api.github.com/repos/valid-owner/valid_repo.name")
 
     def test_real_roadmap_groups_checklists_by_subsection(self):
         groups = todo_to_issues.parse_todo(ROOT / "TODO.md")
@@ -52,6 +66,14 @@ class TodoParserTests(unittest.TestCase):
 
 
 class ReleaseBuilderTests(unittest.TestCase):
+    def test_validate_repo_accepts_github_repository_names(self):
+        self.assertEqual(build_release.validate_repo("owner-name/repo.name_1"), ("owner-name", "repo.name_1"))
+
+    def test_validate_repo_rejects_malformed_names(self):
+        for repo in ("owner", "/repo", "owner/", "owner/repo/extra", "owner/repo-name!", "öwner/repo"):
+            with self.subTest(repo=repo), self.assertRaises(SystemExit):
+                build_release.validate_repo(repo)
+
     def test_version_is_consistent(self):
         self.assertEqual(build_release.read_version(), (ROOT / "VERSION").read_text().strip())
 
@@ -70,11 +92,15 @@ class ReleaseBuilderTests(unittest.TestCase):
     def test_builds_manual_zip_and_static_depot(self):
         with tempfile.TemporaryDirectory() as temporary:
             out = Path(temporary) / "dist"
+            out.mkdir()
+            sentinel = out / "keep.txt"
+            sentinel.write_text("preserve existing output")
             result = build_release.build(
                 build_release.read_version(),
                 "control-twr/xphud-toliss-a32x",
                 out,
             )
+            self.assertEqual(sentinel.read_text(), "preserve existing output")
             self.assertTrue(result["archive"].is_file())
             self.assertTrue((result["site"] / "skunkcrafts/main/skunkcrafts_updater.cfg").is_file())
             self.assertTrue((result["site"] / "skunkcrafts/main/skunkcrafts_updater_whitelist.txt").is_file())

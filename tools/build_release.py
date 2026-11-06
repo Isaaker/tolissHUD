@@ -53,10 +53,13 @@ def read_version() -> str:
 
 
 def validate_repo(repo: str) -> tuple[str, str]:
-    if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repo):
+    allowed = set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_.-")
+    parts = repo.split("/")
+    if len(parts) != 2 or any(
+        not part or any(char not in allowed for char in part) for part in parts
+    ):
         fail(f"repository must be OWNER/REPOSITORY, got {repo!r}")
-    owner, name = repo.split("/", 1)
-    return owner, name
+    return parts[0], parts[1]
 
 
 def pages_base_url(repo: str, override: str | None) -> str:
@@ -149,9 +152,7 @@ def copy_payload(destination: Path, version: str, depot_url: str) -> None:
 
 def build_depot(product_dir: Path, depot_dir: Path) -> None:
     """Create the static depot index; local config is not put on the whitelist."""
-    if depot_dir.exists():
-        shutil.rmtree(depot_dir)
-    shutil.copytree(product_dir, depot_dir)
+    shutil.copytree(product_dir, depot_dir, dirs_exist_ok=True)
 
     entries: list[tuple[str, int, int]] = []
     for path in sorted(depot_dir.rglob("*")):
@@ -207,9 +208,7 @@ def build(version: str, repo: str, output_dir: Path, pages_override: str | None 
     base = pages_base_url(repo, pages_override)
     depot_url = f"{base}/skunkcrafts/main"
 
-    if output_dir.exists():
-        shutil.rmtree(output_dir)
-    output_dir.mkdir(parents=True)
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     product_dir = output_dir / "product" / PRODUCT_FOLDER
     copy_payload(product_dir, version, depot_url)
