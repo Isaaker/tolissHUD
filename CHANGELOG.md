@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Read scalar datarefs with a getter selected from X-Plane's reported type; skip and report unsupported types instead of silently treating a mismatched read as zero.
+- Validate loaded preferences against supported boolean, enum and numeric values, and report load/save failures in the FlyWithLua log.
+
 ## 2.2.0 — ILS / heading refinement
 
 - Moved the G/S deviation scale inboard to avoid collision with the altitude tape.

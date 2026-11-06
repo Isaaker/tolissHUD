@@ -56,10 +56,11 @@ jobs:
         env:
           GITHUB_REPOSITORY: ${{ github.repository }}
           XPHUD_PAGES_BASE_URL: ${{ vars.XPHUD_PAGES_BASE_URL }}
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
         run: |
           python3 tools/build_release.py \
             --repo "$GITHUB_REPOSITORY" \
-            --version "${{ steps.version.outputs.version }}" \
+            --version "$RELEASE_VERSION" \
             --output-dir dist
 
       - name: Create or update GitHub Release

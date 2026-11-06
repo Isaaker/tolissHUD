@@ -65,6 +65,23 @@ class TodoParserTests(unittest.TestCase):
         self.assertEqual(stats["completed_skipped"], 1)
 
 
+class LuaDataAccessTests(unittest.TestCase):
+    def test_scalar_datarefs_use_runtime_type_introspection(self):
+        source = (ROOT / "xphud_toliss_a32x.lua").read_text(encoding="utf-8")
+        self.assertIn("XPLMGetDataRefTypes(dataref)", source)
+        self.assertIn("XPLMGetDatai", source)
+        self.assertIn("XPLMGetDatad", source)
+        self.assertIn("XPLMGetDataf", source)
+        self.assertNotIn("val = XPLMGetDataf(r)", source)
+
+    def test_preferences_define_supported_ranges_and_options(self):
+        source = (ROOT / "xphud_toliss_a32x.lua").read_text(encoding="utf-8")
+        self.assertIn("local PREF_BOUNDS = {", source)
+        self.assertIn("local PREF_OPTIONS = {", source)
+        self.assertIn("invalid numeric preference", source)
+        self.assertIn("invalid option preference", source)
+
+
 class ReleaseBuilderTests(unittest.TestCase):
     def test_validate_repo_accepts_github_repository_names(self):
         self.assertEqual(build_release.validate_repo("owner-name/repo.name_1"), ("owner-name", "repo.name_1"))

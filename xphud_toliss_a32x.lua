@@ -111,6 +111,32 @@ local DEFAULTS = {
     show_cfg       = false,   -- gear + flap lever
 }
 
+local PREF_BOUNDS = {
+    size = { 300, 1200 },
+    pos_x = { -10000, 10000 },
+    pos_y = { -10000, 10000 },
+    line_w = { 1, 6 },
+    text_scale = { 0.7, 2.5 },
+    hud_alpha = { 0.2, 1 },
+    plate_alpha = { 0, 1 },
+    glass_alpha = { 0, 0.18 },
+    glass_edge_alpha = { 0, 0.8 },
+    ladder_deg = { 8, 30 },
+    spd_range_kt = { 20, 80 },
+    alt_range_ft = { 200, 1000 },
+    ralt_max_ft = { 500, 3000 },
+    fd_roll_deg = { 10, 60 },
+    hdg_sel_offset = { -10, 10 },
+    ils_gain = { 0.25, 4 },
+}
+
+local PREF_OPTIONS = {
+    theme = { green = true, modern = true, classic = true },
+    fpv_src = { auto = true, xplane = true },
+    hdg_sel_source = { auto = true, xplane = true, toliss = true },
+    ils_source = { auto = true, xplane = true, toliss = true },
+}
+
 local cfg = {}
 for k, v in pairs(DEFAULTS) do cfg[k] = v end
 
@@ -175,14 +201,61 @@ local FT_PER_M  = 1.0 / 0.3048
 local atan2 = math.atan2 or math.atan
 
 -- ------------------------------------------------------------ data layer --
--- Datarefs are looked up by name with XPLMFindDataRef and read with
--- XPLMGetDataf, which X-Plane converts for int / float / double scalars alike,
--- so we do not depend on the exact type ToLiss declares.  A missing dataref is
--- retried every RETRY_S seconds (the ToLiss plugin creates its datarefs only
--- after the aircraft has loaded).  Nothing here is *written* to the sim.
+-- Dataref types must be checked before choosing a scalar getter: X-Plane does
+-- not convert between int, float and double. A missing dataref is retried
+-- every RETRY_S seconds because ToLiss creates its references after aircraft
+-- load. Nothing here is written to the sim.
 
 local RETRY_S = 2
 local refs, miss = {}, {}
+local scalar_readers, warned_reader = {}, {}
+
+local XPLM_TYPE_INT = 1
+local XPLM_TYPE_FLOAT = 2
+local XPLM_TYPE_DOUBLE = 4
+
+local function has_dataref_type(mask, type_id)
+    return math.floor(mask / type_id) % 2 == 1
+end
+
+local function scalar_reader(path, dataref)
+    local cached = scalar_readers[path]
+    if cached ~= nil then
+        if cached == false then return nil end
+        return cached.getter
+    end
+
+    if type(XPLMGetDataRefTypes) ~= "function" then
+        if not warned_reader.no_type_api then
+            logMsg("XPHUD A32X: XPLMGetDataRefTypes is unavailable; scalar datarefs will be skipped")
+            warned_reader.no_type_api = true
+        end
+        scalar_readers[path] = false
+        return nil
+    end
+
+    local types = XPLMGetDataRefTypes(dataref)
+    local getter, kind
+    if has_dataref_type(types, XPLM_TYPE_FLOAT) and type(XPLMGetDataf) == "function" then
+        getter, kind = XPLMGetDataf, "float"
+    elseif has_dataref_type(types, XPLM_TYPE_DOUBLE) and type(XPLMGetDatad) == "function" then
+        getter, kind = XPLMGetDatad, "double"
+    elseif has_dataref_type(types, XPLM_TYPE_INT) and type(XPLMGetDatai) == "function" then
+        getter, kind = XPLMGetDatai, "int"
+    end
+
+    if not getter then
+        if not warned_reader[path] then
+            logMsg("XPHUD A32X: unsupported non-scalar dataref type for '" .. path .. "'")
+            warned_reader[path] = true
+        end
+        scalar_readers[path] = false
+        return nil
+    end
+
+    scalar_readers[path] = { getter = getter, kind = kind }
+    return getter
+end
 
 local function ref(path)
     local r = refs[path]
@@ -288,13 +361,17 @@ local function read_inputs()
         local val, src = nil, "-"
         local tl, xp = e[2], e[3]
         for j = 1, #tl do
-            local r = ref(tl[j])
-            if r then val = XPLMGetDataf(r); src = "T"; break end
+            local path = tl[j]
+            local r = ref(path)
+            local getter = r and scalar_reader(path, r)
+            if getter then val = getter(r); src = "T"; break end
         end
         if val == nil then
             for j = 1, #xp do
-                local r = ref(xp[j])
-                if r then val = XPLMGetDataf(r); src = "X"; break end
+                local path = xp[j]
+                local r = ref(path)
+                local getter = r and scalar_reader(path, r)
+                if getter then val = getter(r); src = "X"; break end
             end
         end
         if val ~= nil and (val ~= val or val == math.huge or val == -math.huge) then val = nil end
@@ -402,22 +479,30 @@ local function prefs_file()
 end
 
 local function save_prefs()
-    pcall(function()
+    local ok, err = pcall(function()
         local f = io.open(prefs_file(), "w")
-        if not f then return end
-        f:write("# " .. EDITION .. " preferences - edit via the in-sim settings window\n")
+        if not f then error("could not open preferences file for writing") end
+        local lines = {
+            "# " .. EDITION .. " preferences - edit via the in-sim settings window\n",
+        }
         local keys = {}
         for k in pairs(DEFAULTS) do keys[#keys + 1] = k end
         table.sort(keys)
         for _, k in ipairs(keys) do
-            f:write(string.format("%s=%s\n", k, tostring(cfg[k])))
+            lines[#lines + 1] = string.format("%s=%s\n", k, tostring(cfg[k]))
         end
-        f:close()
+        local write_ok, write_err = f:write(table.concat(lines))
+        local close_ok, close_err = f:close()
+        if not write_ok then error(write_err or "could not write preferences file") end
+        if not close_ok then error(close_err or "could not close preferences file") end
     end)
+    if not ok then
+        logMsg("XPHUD A32X: preferences save error: " .. tostring(err))
+    end
 end
 
 local function load_prefs()
-    pcall(function()
+    local ok, err = pcall(function()
         local f = io.open(prefs_file(), "r")
         if not f then return end
         for line in f:lines() do
@@ -425,16 +510,37 @@ local function load_prefs()
             if k and DEFAULTS[k] ~= nil then
                 local dv = DEFAULTS[k]
                 if type(dv) == "boolean" then
-                    cfg[k] = (v == "true")
+                    if v == "true" or v == "false" then
+                        cfg[k] = (v == "true")
+                    else
+                        logMsg("XPHUD A32X: invalid boolean preference '" .. k .. "'; using default")
+                    end
                 elseif type(dv) == "number" then
-                    cfg[k] = tonumber(v) or dv
+                    local n = tonumber(v)
+                    local bounds = PREF_BOUNDS[k]
+                    if not n or n ~= n or n == math.huge or n == -math.huge then
+                        logMsg("XPHUD A32X: invalid numeric preference '" .. k .. "'; using default")
+                    elseif bounds and (n < bounds[1] or n > bounds[2]) then
+                        logMsg("XPHUD A32X: out-of-range preference '" .. k .. "'; clamping to supported range")
+                        cfg[k] = math.max(bounds[1], math.min(bounds[2], n))
+                    else
+                        cfg[k] = n
+                    end
                 else
-                    cfg[k] = v
+                    local options = PREF_OPTIONS[k]
+                    if not options or options[v] then
+                        cfg[k] = v
+                    else
+                        logMsg("XPHUD A32X: invalid option preference '" .. k .. "'; using default")
+                    end
                 end
             end
         end
         f:close()
     end)
+    if not ok then
+        logMsg("XPHUD A32X: preferences load error: " .. tostring(err))
+    end
 end
 
 load_prefs()

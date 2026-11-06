@@ -67,7 +67,7 @@ The following describes the code as reviewed, not a claim that every item is alr
 
 ### 1.2 Known gaps and code-level risks to address first
 
-- [ ] **Dataref type mismatch risk:** `read_inputs()` currently calls `XPLMGetDataf()` for every scalar input. X-Plane SDK documentation explicitly says dataref types must be known and automatic type conversion is not performed; a type mismatch can return the default zero. Add a typed reader before relying on boolean / integer mode flags. See [XPLMDataAccess — Dataref Types and accessors](https://developer.x-plane.com/sdk/XPLMDataAccess/).
+- [x] **Dataref type mismatch risk:** `read_inputs()` inspects each scalar dataref's XPLM type mask and uses the matching int, float or double getter. Array/string-only references are skipped and logged rather than read as zero-valued scalars. See [XPLMDataAccess — Dataref Types and accessors](https://developer.x-plane.com/sdk/XPLMDataAccess/).
 - [ ] **Dataref contract is incomplete:** the `INPUTS` table records names but not expected type, units, reference frame, sign, valid range, aircraft applicability or source authority.
 - [ ] **Availability is not freshness:** a cached reference can continue to exist while its provider is disabled/orphaned; X-Plane documents that orphaned datarefs read as zero. “Dataref exists” must not be treated as proof that a live instrument is publishing current data.
 - [ ] **ILS state and ILS course are ToLiss-only:** `D.ils_on` and `D.ils_crs` are copied from `AirbusFBW/ILSonCapt` and `AirbusFBW/ILSCrs` only. Selecting the X-Plane deviation source does not currently create a complete X-Plane-derived ILS state/course path.
@@ -83,7 +83,7 @@ The following describes the code as reviewed, not a claim that every item is alr
 - [ ] **FD cue is an approximation:** `fd_pitch` and `fd_roll` are treated as relative degrees with hand-applied sign switches. Verify units, sign, zero reference and whether they are actual FD commands or another PFD output. Do not describe this as Airbus HUD FPD until verified.
 - [ ] **FMA colour semantics are discarded:** the script merges colour layers into one green string. Preserve group position and annunciation priority, but check whether losing colour hides distinctions that matter. Never infer AP/FD capture solely from a parsed text fragment if a validated mode dataref exists.
 - [ ] **Text measurement is approximate:** `text_size()` estimates widths using fixed character advances. It needs real measured glyph widths or a reliable per-font table and clipping/fit rules, especially for FMA and long numeric labels.
-- [ ] **Settings are loaded without a complete validation/migration layer:** validate enum strings and numeric bounds after reading preferences; handle unknown keys and future versions safely.
+- [ ] **Settings validation/migration is incomplete:** enum strings, booleans and numeric bounds are validated when preferences load, and unknown keys are ignored. Add versioned preference migrations and test interrupted/corrupt files.
 - [ ] **Graphics state handling should be isolated:** explicitly set the required state for the callback and restore/document the expected state at exit where supported; verify alpha blending and line widths across X-Plane versions and other plugins.
 - [ ] **The combiner frame is decorative, not an optical HUD:** drawing is screen-space and does not provide collimation, eye-point alignment, dynamic head-motion compensation, parallax correction or a real 3D runway projection.
 
@@ -113,12 +113,12 @@ No new flight guidance symbol should be implemented until this milestone is comp
 
 ### 2.2 Implement typed reads
 
-- [ ] Check whether the FlyWithLua runtime exposes `XPLMGetDataRefTypes()` and/or equivalent type introspection. If available, read and validate type masks before binding a reader.
-- [ ] Use `XPLMGetDatai()` for integer / enum / boolean references and `XPLMGetDataf()` or `XPLMGetDatad()` for documented float/double scalars.
-- [ ] For any array/string dataref, use a supported array/string binding and explicit length handling; never call a scalar float getter for it.
+- [x] Check whether the FlyWithLua runtime exposes `XPLMGetDataRefTypes()` and/or equivalent type introspection. If available, read and validate type masks before binding a reader.
+- [x] Use `XPLMGetDatai()` for integer / enum / boolean references and `XPLMGetDataf()` or `XPLMGetDatad()` for documented float/double scalars.
+- [x] For any array/string dataref, use a supported array/string binding and explicit length handling; never call a scalar float getter for it.
 - [ ] If runtime type introspection is not exposed by the Lua API, maintain an audited type map from SDK / ToLiss evidence and fail safe on unexpected values.
-- [ ] Add per-source getter wrappers: `read_float`, `read_double`, `read_int`, `read_string`, `read_array` (only if actually needed).
-- [ ] Do not convert every value to float and then guess whether it was an integer flag.
+- [x] Add typed scalar getter selection for integer, float and double references; add string/array readers only if the HUD later needs those dataref types.
+- [x] Do not convert every value to float and then guess whether it was an integer flag.
 - [ ] Verify the `XPLMFindDataRef` / cached-handle lifecycle across aircraft reload, ToLiss plugin reload and X-Plane reload. X-Plane documents orphaned references that return zero while remaining addressable.
 
 ### 2.3 Model availability, validity and freshness separately
@@ -592,6 +592,24 @@ FAST 56 describes the A320 Family L5 HUD standard (certified in February 2015) a
 - [ ] No X-Plane crash, Lua error loop, permanent blank HUD or persistent graphics-state corruption during the test matrix.
 - [ ] No material FPS regression in normal use; publish measured results and test hardware/conditions where possible.
 - [ ] Each supported aircraft has a documented dataref/profile status.
+
+### 10.4 Cockpit-mounted HUD hardware [P2 / native integration]
+
+The current FlyWithLua renderer is a screen-space overlay and cannot attach an OBJ to the cockpit. A physical-looking support and combiner fixed to the aircraft requires a separately installable native X-Plane integration; adding an OBJ file alone is not sufficient. Do not modify or redistribute ToLiss aircraft files, or describe the result as a collimated/certified HUD.
+
+- [ ] Define a native X-Plane plugin and OBJ architecture that attaches an original support frame and transparent combiner at a user-calibrated captain-side cockpit position while preserving the existing Lua-only mode.
+- [ ] Verify the required X-Plane SDK APIs, supported simulator versions, plugin build pipeline, packaging, and the interface between the 3D object and Lua symbology.
+- [ ] Create an original, redistributable OBJ model and materials for the support and glass; do not use ToLiss/Airbus meshes, textures, or other proprietary aircraft assets.
+- [ ] Implement aircraft-relative placement, cockpit/external-view visibility, and safe behaviour on aircraft changes, plugin reloads, unsupported aircraft, or a missing native plugin.
+- [ ] Add user calibration for position, orientation, and scale without requiring edits to installed ToLiss aircraft packages.
+- [ ] Verify that the hardware stays attached to the cockpit through aircraft and camera movement, remains hidden in external views, and does not obstruct the outside scene or misregister the Lua symbology.
+- [ ] Document native-plugin installation, removal, supported aircraft, calibration, and the remaining optical/collimation limitations.
+
+**Acceptance criteria (native integration):**
+
+- [ ] The original support and combiner appear at the calibrated captain-side cockpit location on each explicitly supported ToLiss variant and behave as a cockpit-fixed object through view changes.
+- [ ] The object is absent from external views; the existing Lua-only HUD remains usable when the native plugin is unavailable.
+- [ ] No ToLiss aircraft package needs modification or redistribution, and no claim of real optical collimation is made.
 
 ---
 

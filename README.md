@@ -53,6 +53,9 @@ Commands for keyboard / joystick assignment:
 The shared dataref `XPHUD_A32X/Visible` is an integer dataref that can be read or written by other scripts to control HUD visibility.
 
 Settings are saved automatically to `Output/preferences/xphud_toliss_a32x.prefs`.
+Loaded preference values are checked against the supported ranges and options; invalid values are reported in the FlyWithLua log and safely reset or clamped.
+
+Scalar datarefs are read using the type reported by X-Plane (`int`, `float` or `double`). FlyWithLua builds that do not expose `XPLMGetDataRefTypes` are reported in the log and will not feed untyped scalar values to the HUD.
 
 ## Display and combiner calibration
 
