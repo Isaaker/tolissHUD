@@ -597,13 +597,16 @@ FAST 56 describes the A320 Family L5 HUD standard (certified in February 2015) a
 
 The current FlyWithLua renderer is a screen-space overlay and cannot attach an OBJ to the cockpit. A physical-looking support and combiner fixed to the aircraft requires a separately installable native X-Plane integration; adding an OBJ file alone is not sufficient. Do not modify or redistribute ToLiss aircraft files, or describe the result as a collimated/certified HUD.
 
+**Prototype progress — 6 November 2026:** an initial optional native companion implementation now exists on a feature branch. It contains an original OBJ8 support/combiner asset and texture, a separate XPLM plugin source using aircraft-relative instance placement, a Plugins-menu position/orientation calibration panel, external-view hiding, a CMake build and a Windows/Linux/macOS CI matrix. The OBJ8 geometry tests are being added. The C++ source has only been syntax-checked/linked with local mock SDK headers so far; that is **not** an official X-Plane SDK build. Official-SDK Actions builds and all in-simulator checks remain outstanding. The prototype is deliberately excluded from stable releases and the SkunkCrafts depot.
+
+
 - [ ] Define a native X-Plane plugin and OBJ architecture that attaches an original support frame and transparent combiner at a user-calibrated captain-side cockpit position while preserving the existing Lua-only mode.
 - [ ] Verify the required X-Plane SDK APIs, supported simulator versions, plugin build pipeline, packaging, and the interface between the 3D object and Lua symbology.
-- [ ] Create an original, redistributable OBJ model and materials for the support and glass; do not use ToLiss/Airbus meshes, textures, or other proprietary aircraft assets.
+- [x] Create an original, redistributable OBJ model and materials for the support and glass; do not use ToLiss/Airbus meshes, textures, or other proprietary aircraft assets.
 - [ ] Implement aircraft-relative placement, cockpit/external-view visibility, and safe behaviour on aircraft changes, plugin reloads, unsupported aircraft, or a missing native plugin.
 - [ ] Add user calibration for position, orientation, and scale without requiring edits to installed ToLiss aircraft packages.
 - [ ] Verify that the hardware stays attached to the cockpit through aircraft and camera movement, remains hidden in external views, and does not obstruct the outside scene or misregister the Lua symbology.
-- [ ] Document native-plugin installation, removal, supported aircraft, calibration, and the remaining optical/collimation limitations.
+- [x] Document native-plugin installation, removal, supported aircraft, calibration, and the remaining optical/collimation limitations.
 
 **Acceptance criteria (native integration):**
 
