@@ -53,10 +53,13 @@ def read_version() -> str:
 
 
 def validate_repo(repo: str) -> tuple[str, str]:
-    if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repo):
+    allowed = set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_.-")
+    parts = repo.split("/")
+    if len(parts) != 2 or any(
+        not part or any(char not in allowed for char in part) for part in parts
+    ):
         fail(f"repository must be OWNER/REPOSITORY, got {repo!r}")
-    owner, name = repo.split("/", 1)
-    return owner, name
+    return parts[0], parts[1]
 
 
 def pages_base_url(repo: str, override: str | None) -> str:
