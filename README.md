@@ -173,6 +173,14 @@ This repository includes GitHub Actions for Lua syntax / tooling CI, secret scan
 
 ## Development roadmap
 
+### Experimental native 3D hardware companion
+
+An optional native-plugin prototype is being developed in native3d/. It adds an original OBJ8 combiner support/frame as an aircraft-relative X-Plane object and a calibration menu for position and orientation. The existing FlyWithLua HUD remains independent and continues to provide all current symbology.
+
+**This is experimental and is not part of the stable Lua-only installer or SkunkCrafts depot.** The object is not embedded in the ToLiss cockpit model, does not use the aircraft cockpit-only HUD-glass rendering path, and is not optically collimated. The Lua symbology remains a screen-space overlay; it is not yet projected onto the physical 3D pane. Initial coordinates are placeholders and require in-simulator calibration.
+
+The native source is built separately against the official X-Plane SDK in a platform matrix (Windows, Linux, macOS Intel and Apple Silicon). Do not install or distribute a binary until the official-SDK workflow succeeds and the result has been tested in X-Plane. See native3d/README.md for implementation details, installation layout and limitations.
+
 The detailed engineering roadmap, dataref audit tasks, implementation milestones, acceptance criteria and simulator test matrix are maintained in [`TODO.md`](TODO.md). Tasks are prioritised by data integrity and source correctness before advanced HUD symbology.
 
 ## References

@@ -1,0 +1,131 @@
+name: Native 3D prototype
+
+on:
+  push:
+    branches: [feat/native-3d-hardware-prototype]
+    paths:
+      - 'native3d/**'
+      - 'tests/test_native3d_assets.py'
+      - '.github/workflows/native3d-prototype.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'native3d/**'
+      - 'tests/test_native3d_assets.py'
+      - '.github/workflows/native3d-prototype.yml'
+  workflow_dispatch:
+
+permissions: {}
+concurrency:
+  group: native3d-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  assets:
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: '3.12'
+      - name: Validate OBJ8 geometry and texture
+        run: python -m unittest discover -s tests -p 'test_native3d_assets.py' -v
+
+  build:
+    needs: assets
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            platform: linux
+            binary: lin.xpl
+          - os: windows-2022
+            platform: windows
+            binary: win.xpl
+          - os: macos-15-intel
+            platform: macos-x86_64
+            binary: mac.xpl
+            arch: x86_64
+          - os: macos-15
+            platform: macos-arm64
+            binary: mac.xpl
+            arch: arm64
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Download official X-Plane SDK (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          curl --fail --location --retry 3 https://developer.x-plane.com/wp-content/plugins/code-sample-generation/sdk_zip_files/XPSDK430.zip --output "$RUNNER_TEMP/XPSDK430.zip"
+          unzip -q "$RUNNER_TEMP/XPSDK430.zip" -d "$RUNNER_TEMP/xplane-sdk"
+          header="$(find "$RUNNER_TEMP/xplane-sdk" -name XPLMPlugin.h -print -quit)"
+          test -n "$header"
+          sdk_root="$(dirname "$(dirname "$(dirname "$header")")")"
+          echo "XPLANE_SDK_ROOT=$sdk_root" >> "$GITHUB_ENV"
+          if [[ "$RUNNER_OS" == "macOS" ]]; then
+            if [[ "$RUNNER_ARCH" == "ARM64" ]]; then echo "CMAKE_OSX_ARCHITECTURES=arm64" >> "$GITHUB_ENV"; else echo "CMAKE_OSX_ARCHITECTURES=x86_64" >> "$GITHUB_ENV"; fi
+          fi
+
+      - name: Download official X-Plane SDK (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $zip = Join-Path $env:RUNNER_TEMP 'XPSDK430.zip'
+          $dest = Join-Path $env:RUNNER_TEMP 'xplane-sdk'
+          Invoke-WebRequest -Uri 'https://developer.x-plane.com/wp-content/plugins/code-sample-generation/sdk_zip_files/XPSDK430.zip' -OutFile $zip
+          Expand-Archive -Path $zip -DestinationPath $dest -Force
+          $header = Get-ChildItem -Path $dest -Filter 'XPLMPlugin.h' -Recurse | Select-Object -First 1
+          if (-not $header) { throw 'XPLMPlugin.h was not found in the SDK archive.' }
+          $sdkRoot = Split-Path (Split-Path (Split-Path $header.FullName))
+          "XPLANE_SDK_ROOT=$sdkRoot" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Configure native plugin (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: cmake -S native3d -B build/native3d -DCMAKE_BUILD_TYPE=Release "-DXPLANE_SDK_ROOT=$env:XPLANE_SDK_ROOT"
+
+      - name: Configure native plugin (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: cmake -S native3d -B build/native3d -DCMAKE_BUILD_TYPE=Release -DXPLANE_SDK_ROOT="$XPLANE_SDK_ROOT" "-DCMAKE_OSX_ARCHITECTURES=$CMAKE_OSX_ARCHITECTURES"
+
+      - name: Build native plugin
+        run: cmake --build build/native3d --config Release --parallel
+
+      - name: Stage artifact (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          target="dist/XPHUD_Native3D"
+          mkdir -p "$target/64" "$target/objects"
+          cp "build/native3d/${{ matrix.binary }}" "$target/64/${{ matrix.binary }}"
+          cp native3d/objects/xphud_native_combiner.obj native3d/objects/xphud_native_combiner.png "$target/objects/"
+          cp native3d/README.md "$target/README_NATIVE3D.md"
+
+      - name: Stage artifact (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $target = 'dist/XPHUD_Native3D'
+          New-Item -ItemType Directory -Force -Path "$target/64", "$target/objects" | Out-Null
+          Copy-Item 'build/native3d/win.xpl' "$target/64/win.xpl"
+          Copy-Item -Path @('native3d/objects/xphud_native_combiner.obj','native3d/objects/xphud_native_combiner.png') -Destination "$target/objects/"
+          Copy-Item 'native3d/README.md' "$target/README_NATIVE3D.md"
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: xphud-native3d-${{ matrix.platform }}
+          path: dist/XPHUD_Native3D/
+          if-no-files-found: error
+          retention-days: 14
