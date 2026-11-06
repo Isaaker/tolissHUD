@@ -1,0 +1,48 @@
+name: TODO to GitHub Issues
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'TODO.md'
+      - 'tools/todo_to_issues.py'
+      - '.github/workflows/todo-sync.yml'
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: 'Apply changes to GitHub Issues (false performs a dry run)'
+        required: true
+        default: false
+        type: boolean
+
+permissions: {}
+
+concurrency:
+  group: todo-issue-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    name: Synchronise TODO sections
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Check out the TODO source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Preview or apply TODO issue updates
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          APPLY_INPUT: ${{ inputs.apply }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT_NAME" = "push" ] || [ "$APPLY_INPUT" = "true" ]; then
+            python3 tools/todo_to_issues.py --file TODO.md --apply
+          else
+            python3 tools/todo_to_issues.py --file TODO.md
+          fi

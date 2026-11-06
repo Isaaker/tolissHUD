@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate Lua, documentation and release tooling
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Lua parser
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes lua5.4
+
+      - name: Parse Lua script
+        run: luac5.4 -p xphud_toliss_a32x.lua
+
+      - name: Compile-check Lua bytecode without executing the plugin
+        run: |
+          tmp_file="$(mktemp)"
+          trap 'rm -f "$tmp_file"' EXIT
+          luac5.4 -o "$tmp_file" xphud_toliss_a32x.lua
+          test -s "$tmp_file"
+
+      - name: Run repository tooling tests
+        run: python3 -m unittest discover -s tests -v
+
+      - name: Validate generated distribution locally
+        run: |
+          python3 tools/build_release.py \
+            --repo "${GITHUB_REPOSITORY}" \
+            --output-dir "$RUNNER_TEMP/xphud-dist"
