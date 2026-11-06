@@ -12,6 +12,13 @@ import todo_to_issues  # noqa: E402
 
 
 class TodoParserTests(unittest.TestCase):
+    def test_repository_validation_handles_valid_and_malformed_values(self):
+        self.assertTrue(todo_to_issues.is_valid_repo("Isaaker/tolissHUD"))
+        self.assertTrue(todo_to_issues.is_valid_repo("owner!/repo!"))
+        for value in ("owner", "/repo", "owner/", "owner/repo/extra", "owner/repo name"):
+            with self.subTest(value=value):
+                self.assertFalse(todo_to_issues.is_valid_repo(value))
+        self.assertFalse(todo_to_issues.is_valid_repo("!" * 100_000))
     def test_github_api_rejects_invalid_repository_path_segments(self):
         for owner, repo in [
             ("owner/other", "repo"),
