@@ -15,7 +15,7 @@ class Native3DAssetTests(unittest.TestCase):
         with Image.open(PNG) as im:
             im.load()
             self.assertEqual(im.mode, "RGBA")
-            self.assertEqual(im.size, (128, 128))
+            self.assertEqual(im.size, (64, 64))
 
     def test_vertex_index_counts(self):
         lines = OBJ.read_text(encoding="ascii").splitlines()
@@ -54,8 +54,8 @@ class Native3DAssetTests(unittest.TestCase):
             self.assertEqual(alpha.getextrema()[0], 0)
             self.assertEqual(alpha.getextrema()[1], 255)
             # OBJ V=.62-.96 selects the metal band; V=.04-.34 selects the pane band.
-            metal = alpha.crop((0, 4, 128, 49))
-            pane = alpha.crop((0, 84, 128, 124))
+            metal = alpha.crop((0, 2, 64, 25))
+            pane = alpha.crop((0, 42, 64, 62))
             self.assertEqual(metal.getextrema(), (255, 255))
             self.assertGreater(pane.getextrema()[0], 0)
             self.assertLess(pane.getextrema()[1], 255)
