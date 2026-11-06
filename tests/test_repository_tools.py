@@ -12,6 +12,21 @@ import todo_to_issues  # noqa: E402
 
 
 class TodoParserTests(unittest.TestCase):
+    def test_github_api_rejects_invalid_repository_path_segments(self):
+        for owner, repo in [
+            ("owner/other", "repo"),
+            ("owner", "../other"),
+            ("owner", "repo?state=all"),
+            ("..", "repo"),
+        ]:
+            with self.subTest(owner=owner, repo=repo):
+                with self.assertRaises(ValueError):
+                    todo_to_issues.GitHubAPI(owner, repo, "token")
+
+    def test_github_api_builds_fixed_github_endpoint(self):
+        api = todo_to_issues.GitHubAPI("valid-owner", "valid_repo.name", "token")
+        self.assertEqual(api.base, "https://api.github.com/repos/valid-owner/valid_repo.name")
+
     def test_real_roadmap_groups_checklists_by_subsection(self):
         groups = todo_to_issues.parse_todo(ROOT / "TODO.md")
         self.assertGreaterEqual(len(groups), 40)
