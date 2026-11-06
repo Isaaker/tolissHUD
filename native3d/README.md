@@ -6,16 +6,34 @@ This directory contains an **experimental optional X-Plane plugin** and an origi
 
 - Loads an original OBJ8 frame/support via XPLM object instancing.
 - Places it relative to the loaded aircraft using X-Plane position and attitude datarefs.
-- Requires both a ToLiss aircraft path and the AirbusFBW/APHDG_Capt marker dataref before showing the object. The marker is checked for presence only; it is never read or written.
+- Anchors its initial position to X-Plane's aircraft pilot-eye reference datarefs: `sim/aircraft/view/acf_peX`, `acf_peY` and `acf_peZ`.
+- Detects ToLiss using either the aircraft path or the `AirbusFBW/APHDG_Capt` marker. The marker is checked for presence only; it is never read or written.
 - Hides the object in external views.
-- Adds a Plugins-menu calibration panel for XYZ position and pitch/yaw/roll offsets.
-- Saves calibration to Output/preferences/xphud_native3d.cfg.
+- Adds a Plugins-menu calibration panel for XYZ offsets and pitch/yaw/roll.
+- Adds a diagnostic entry that reports aircraft detection, OBJ loading, instance creation and the pilot-eye coordinates to `Log.txt`.
+- Saves calibration to `Output/preferences/xphud_native3d.cfg`.
+
+## Positioning change
+
+The first prototype used a guessed aircraft-origin position (`-0.58, 1.15, -7.0 m`). That was not measured against the ToLiss cockpit and could place the model outside the captain's forward field of view.
+
+The new preset is an offset from X-Plane's pilot-eye reference:
+- X: `0.000 m`
+- Y: `-0.425 m`
+- Z: `-0.800 m`
+
+The OBJ combiner pane is centred at approximately Y=0.425 m and Z=0.116 m from its origin. This preset therefore puts the pane centre roughly level with the reference eye point and about 0.68 m forward of it. This is a **geometric starting estimate**, not a measured ToLiss/A320 installation coordinate. Reset to the eye-point preset from the plugin menu to restore it.
+
+XYZ menu adjustments are now offsets from the pilot-eye reference, not absolute coordinates from the aircraft CG. X is positive right, Y positive up and Z positive aft. Use 1 cm / 5 cm position steps and 0.5 degree angular steps. The diagnostic menu item writes the current pilot-eye datarefs and calculated aircraft-frame origin to `Log.txt`.
+
+The aircraft-coordinate conversion follows Laminar Research's published transformation:
+https://developer.x-plane.com/article/screencoordinates/
 
 ## Important limitations
 
-This is **physical-looking 3D hardware only**. It is an aircraft-relative world instance, not an object embedded inside the ToLiss cockpit. It does not use ATTR_hud_glass, is not collimated, does not provide optical infinity, and does not solve eye-point registration or parallax. The existing Lua symbology remains a separate screen-space overlay and is not drawn onto this pane.
+This is **physical-looking 3D hardware only**. It is an aircraft-relative world instance, not an object embedded inside the ToLiss cockpit. It does not use `ATTR_hud_glass`, is not collimated, does not provide optical infinity, and does not solve eye-point registration or parallax. The existing Lua symbology remains a separate screen-space overlay and is not drawn onto this pane.
 
-The default position (-0.58, 1.15, -7.0) metres is a rough placeholder, not a measured A320 cockpit datum. Use Plugins → XPHUD Native 3D to nudge the object and save the calibration. Position steps are 1 cm / 5 cm; angular steps are 0.5 degrees. Exact placement must be calibrated in the simulator for the user's aircraft, cockpit, view and seat position.
+If the object still does not appear, open `Plugins → XPHUD Native 3D → Print diagnostics to Log.txt` and inspect the last `XPHUD Native3D:` entries in X-Plane's `Log.txt`. This distinguishes a failed ToLiss gate, missing pilot-eye datarefs, OBJ load failure, and instance-creation failure from a placement/calibration problem.
 
 ## Build
 
