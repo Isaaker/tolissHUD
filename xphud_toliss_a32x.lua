@@ -480,6 +480,7 @@ local diag_sample_id = 0
 local diag_file_path = nil
 local diag_error = nil
 local DIAG_AIRCRAFT_PROFILE = "ToLiss A320neo standard (latest installed; exact build not yet captured)"
+local DIAG_FMA_LAYERS = { { "g", "w", "b" }, { "b", "m", "w" }, { "a", "b", "w" } }
 
 local function csv_cell(v)
     if v == nil then return "" end
@@ -576,7 +577,7 @@ local function diag_capture(kind)
     -- FMA values are strings and are deliberately recorded separately from
     -- scalar DataRefs, preserving the exact path/layer and readable text.
     for i = 1, 3 do
-        for _, layer in ipairs(FMA_LAYERS[i]) do
+        for _, layer in ipairs(DIAG_FMA_LAYERS[i]) do
             local path = "AirbusFBW/FMA" .. i .. layer
             local value = read_str(path)
             add_row("fma" .. i .. layer, "T", path, nil, value, "string", "string", false)
