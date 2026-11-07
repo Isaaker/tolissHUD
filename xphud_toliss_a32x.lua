@@ -1777,7 +1777,90 @@ end
 
 -- --------------------------------------------------------------- HUD draw --
 
-local function draw_hud_elements()
+-- ------------------------------------------------------ display animation --
+-- All motion is a 2D screen-space approximation. It never drives aircraft
+-- systems and does not claim to reproduce the real HUD's physical kinematics.
+local DISPLAY_ANIM = {
+    mode = "boot",       -- boot -> deploying -> deployed -> stowing -> stowed
+    started = nil,
+    boot_seconds = 1.8,
+    travel_seconds = 1.25,
+}
+
+local function anim_now()
+    return tonumber(D.running) or 0
+end
+
+local function set_display_target(visible)
+    local now = anim_now()
+    if visible then
+        if DISPLAY_ANIM.mode == "stowed" or DISPLAY_ANIM.mode == "stowing" then
+            DISPLAY_ANIM.mode = "deploying"
+            DISPLAY_ANIM.started = now
+        end
+    else
+        if DISPLAY_ANIM.mode == "deployed" or DISPLAY_ANIM.mode == "deploying"
+            or DISPLAY_ANIM.mode == "boot" then
+            DISPLAY_ANIM.mode = "stowing"
+            DISPLAY_ANIM.started = now
+        end
+    end
+end
+
+local function smoothstep(t)
+    t = clamp(t, 0, 1)
+    return t * t * (3 - 2 * t)
+end
+
+local function display_animation()
+    local now = anim_now()
+    if DISPLAY_ANIM.mode == "boot" then
+        if not DISPLAY_ANIM.started then DISPLAY_ANIM.started = now end
+        if now - DISPLAY_ANIM.started < DISPLAY_ANIM.boot_seconds then
+            return 0, true
+        end
+        DISPLAY_ANIM.mode = "deploying"
+        DISPLAY_ANIM.started = now
+    end
+
+    if DISPLAY_ANIM.mode == "deploying" then
+        local p = smoothstep((now - (DISPLAY_ANIM.started or now)) / DISPLAY_ANIM.travel_seconds)
+        if p >= 1 then DISPLAY_ANIM.mode = "deployed" end
+        return p, false
+    elseif DISPLAY_ANIM.mode == "stowing" then
+        local p = 1 - smoothstep((now - (DISPLAY_ANIM.started or now)) / DISPLAY_ANIM.travel_seconds)
+        if p <= 0 then DISPLAY_ANIM.mode = "stowed" end
+        return p, false
+    elseif DISPLAY_ANIM.mode == "stowed" then
+        return 0, false
+    end
+    return 1, false
+end
+
+local function draw_startup_splash(cx, cy, S, k)
+    local green = COL.text
+    local dim = COL.units
+    local y = cy - 0.045 * S
+    local w = 0.23 * S
+    local h = 0.105 * S
+    -- Original XPHUD identity mark; intentionally not the Airbus corporate logo.
+    d_line(cx - w, y, cx - 0.72*w, y - h, green, math.max(2, 2.2*k))
+    d_line(cx - 0.72*w, y - h, cx + 0.72*w, y - h, green, math.max(2, 2.2*k))
+    d_line(cx + 0.72*w, y - h, cx + w, y, green, math.max(2, 2.2*k))
+    d_line(cx + w, y, cx + 0.72*w, y + h, green, math.max(2, 2.2*k))
+    d_line(cx + 0.72*w, y + h, cx - 0.72*w, y + h, green, math.max(2, 2.2*k))
+    d_line(cx - 0.72*w, y + h, cx - w, y, green, math.max(2, 2.2*k))
+    draw_text(cx, y - 0.012*S, "XPHUD", green, 2.0*k, 0, true)
+    draw_text(cx, y + 0.17*S, "A32X  /  HEAD-UP DISPLAY", dim, 0.78*k, 0, true)
+    draw_text(cx, y + 0.225*S, "INITIALISING", dim, 0.66*k, 0, true)
+    local pulse = 0.5 + 0.5 * math.sin((anim_now() % 0.8) / 0.8 * 2 * math.pi)
+    local barw = 0.19 * S
+    d_line(cx - barw, y + 0.265*S, cx + barw, y + 0.265*S, dim, math.max(1, 1.4*k))
+    d_line(cx - barw, y + 0.265*S, cx - barw + 2*barw*pulse, y + 0.265*S,
+           green, math.max(2, 2.2*k))
+end
+
+local function draw_hud_elements(deploy_progress, show_splash)
     COL = PALETTES[cfg.theme] or PALETTES.green
     MASTER_A = cfg.hud_alpha or 1.0
 
@@ -1798,15 +1881,29 @@ local function draw_hud_elements()
     local k = S / 500
     local th = math.max(1.5, cfg.line_w * k)
 
+    if show_splash then
+        draw_startup_splash(cx, cy, S, k)
+        return
+    end
+
+    -- During stow/deploy the pane and its support move together in screen space.
+    -- This is an illustrative 2D animation, not a 3D hinge or eye-point model.
+    local p = clamp(deploy_progress or 1, 0, 1)
+    if p <= 0 then return end
+    local assembly_scale = 0.86 + 0.14 * p
+    local assembly_cy = cy + (1 - p) * 0.12 * S
+    local symbol_alpha = smoothstep((p - 0.38) / 0.62)
+    MASTER_A = (cfg.hud_alpha or 1.0) * symbol_alpha
+
     -- nothing valid at all: the aircraft is unpowered / the ADIRS are off, and a
-    -- real HUD is dark then.  (Diagnostics still draw so you can see why.)
+    -- real HUD is dark then. The combiner hardware can still be seen deploying.
+    draw_combiner_hardware(cx, assembly_cy, S * assembly_scale, k * assembly_scale)
+    draw_combiner(cx, assembly_cy, S * assembly_scale, k * assembly_scale)
     if not (v_ias or v_alt or v_att or v_hdg) then
         if cfg.show_debug then draw_debug(cx, cy, S, k) end
         return
     end
-
-    draw_combiner_hardware(cx, cy, S, k)
-    draw_combiner(cx, cy, S, k)
+    if symbol_alpha <= 0.001 then return end
 
     local pitch, roll = D.pitch or 0, D.roll or 0
     local gamma, drift = fpv_angles()
@@ -1836,19 +1933,21 @@ end
 -- FlyWithLua as a whole.
 function xa32_draw()
     SH = SCREEN_HIGHT
-    if not cfg.visible then return end
     local ok, err = pcall(function()
         read_inputs()
         if (D.running or 0) <= 0 then return end              -- flight not started yet
+        if not cfg.visible and DISPLAY_ANIM.mode ~= "stowing" then return end
         if cfg.hide_external and (D.view_ext or 0) == 1 then return end
 
-        -- Set a known 2D overlay state before drawing.  Alpha testing is OFF
+        -- Set a known 2D overlay state before drawing. Alpha testing is OFF
         -- and alpha blending is ON so the combiner tint and bevel stay translucent.
         if type(XPLMSetGraphicsState) == "function" then
             XPLMSetGraphicsState(0, 0, 0, 0, 1, 0, 0)
         end
 
-        draw_hud_elements()
+        local progress, splash = display_animation()
+        if not cfg.visible and DISPLAY_ANIM.mode == "stowed" then return end
+        draw_hud_elements(progress, splash)
     end)
     if not ok then
         draw_error_count = draw_error_count + 1
@@ -1869,12 +1968,14 @@ end
 
 function xa32_toggle()
     cfg.visible = not cfg.visible
+    set_display_target(cfg.visible)
     sync_visible_out()
     settings_dirty = true
 end
 
 function xa32_set_visible(v)
     cfg.visible = v and true or false
+    set_display_target(cfg.visible)
     sync_visible_out()
     settings_dirty = true
 end
@@ -1898,6 +1999,7 @@ function xa32_sync_visible()
     local cur = xa32_visible_dr
     if cur ~= vis_last then
         cfg.visible = (cur == 1)
+        set_display_target(cfg.visible)
         vis_last = cur
         settings_dirty = true
     end
