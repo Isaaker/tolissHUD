@@ -70,6 +70,8 @@ local DEFAULTS = {
     hud_alpha      = 1.0,     -- symbology brightness (bitmap fonts do not expose glyph alpha)
     plate_alpha    = 0.0,     -- dark backing behind individual readouts (0 = off)
     show_glass     = true,    -- draw the transparent combiner pane and its subtle edge
+    show_hardware  = true,    -- draw the 2D combiner support, hinge blocks and mounting bracket
+    hardware_alpha = 0.82,    -- physical hardware shading opacity
     glass_alpha    = 0.045,  -- subtle pane tint; keep low to preserve outside visibility
     glass_edge_alpha = 0.28, -- combiner edge / reflection opacity
     theme          = "green", -- green | modern | classic
@@ -1504,6 +1506,110 @@ local function draw_combiner(cx, cy, S, k)
              GLASS_HI, math.max(1, 0.55 * k), edge * 0.14)
 end
 
+-- Stylised 2D combiner mounting hardware. This is intentionally a
+-- screen-space illustration, not a claim of exact ToLiss cockpit geometry.
+-- Dark metal parts sit behind the glass; machined edges, hinge pins and
+-- fasteners add depth while keeping the central viewing area unobstructed.
+local HW_BODY  = { 0.075, 0.090, 0.085 }
+local HW_DARK  = { 0.025, 0.032, 0.030 }
+local HW_EDGE  = { 0.30, 0.35, 0.32 }
+local HW_HI    = { 0.48, 0.53, 0.49 }
+local HW_SHADOW= { 0.012, 0.018, 0.016 }
+local HW_MARK  = { 0.18, 0.22, 0.19 }
+
+local function hw_line(x1, y1, x2, y2, col, width, alpha)
+    d_line_a(x1, y1, x2, y2, col, width, alpha)
+end
+
+local function hw_fastener(x, y, r, k, alpha)
+    d_circle_f(x, y, r, HW_DARK, alpha)
+    d_circle(x, y, r, HW_EDGE, math.max(1, 0.8 * k))
+    hw_line(x - r * 0.42, y, x + r * 0.42, y, HW_HI, math.max(1, 0.65 * k), alpha * 0.8)
+end
+
+local function draw_combiner_hardware(cx, cy, S, k)
+    if not cfg.show_hardware then return end
+    local a = clamp(cfg.hardware_alpha or 0.82, 0, 1)
+    if a <= 0.01 then return end
+
+    local x1, x2 = cx - 0.515 * S, cx + 0.515 * S
+    local y1, y2 = cy - 0.535 * S, cy + 0.485 * S
+    local c = 0.026 * S
+    local w = math.max(1.2, 0.0045 * S)
+    local edge = math.max(1, 1.2 * k)
+
+    -- Upper protective hood / crossbar with chamfered ends.
+    d_quad_f(x1 + 0.055*S, y1 - 0.050*S,
+             x2 - 0.055*S, y1 - 0.050*S,
+             x2 - 0.020*S, y1 + 0.012*S,
+             x1 + 0.020*S, y1 + 0.012*S, HW_BODY, a * 0.94)
+    hw_line(x1 + 0.065*S, y1 - 0.043*S, x2 - 0.065*S, y1 - 0.043*S, HW_HI, edge, a * 0.52)
+    hw_line(x1 + 0.025*S, y1 + 0.006*S, x2 - 0.025*S, y1 + 0.006*S, HW_DARK, edge, a)
+
+    -- Side rails and small retaining lips. Keep the rails just outside the
+    -- transparent aperture so they do not mask symbology or scenery.
+    for _, side in ipairs({-1, 1}) do
+        local x = (side < 0) and x1 or x2
+        local xo = x + side * 0.026*S
+        d_quad_f(xo - side*0.010*S, y1 + 0.105*S,
+                 xo + side*0.010*S, y1 + 0.105*S,
+                 xo + side*0.010*S, y2 - 0.085*S,
+                 xo - side*0.010*S, y2 - 0.085*S, HW_BODY, a * 0.88)
+        hw_line(xo - side*0.007*S, y1 + 0.12*S, xo - side*0.007*S, y2 - 0.10*S,
+                HW_HI, edge, a * 0.38)
+        hw_line(xo + side*0.010*S, y1 + 0.12*S, xo + side*0.010*S, y2 - 0.10*S,
+                HW_DARK, edge, a)
+        -- Clamp tabs at upper and lower ends of each side rail.
+        d_quad_f(xo - 0.030*S, y1 + 0.12*S, xo + 0.030*S, y1 + 0.12*S,
+                 xo + 0.030*S, y1 + 0.17*S, xo - 0.030*S, y1 + 0.17*S, HW_BODY, a)
+        d_quad_f(xo - 0.030*S, y2 - 0.17*S, xo + 0.030*S, y2 - 0.17*S,
+                 xo + 0.030*S, y2 - 0.12*S, xo - 0.030*S, y2 - 0.12*S, HW_BODY, a)
+        hw_fastener(xo, y1 + 0.145*S, 0.006*S, k, a)
+        hw_fastener(xo, y2 - 0.145*S, 0.006*S, k, a)
+    end
+
+    -- Lower cross member and glass retaining channel.
+    d_quad_f(x1 + 0.075*S, y2 + 0.006*S,
+             x2 - 0.075*S, y2 + 0.006*S,
+             x2 - 0.095*S, y2 + 0.043*S,
+             x1 + 0.095*S, y2 + 0.043*S, HW_BODY, a * 0.92)
+    hw_line(x1 + 0.09*S, y2 + 0.009*S, x2 - 0.09*S, y2 + 0.009*S,
+            HW_HI, edge, a * 0.45)
+    hw_line(x1 + 0.10*S, y2 + 0.038*S, x2 - 0.10*S, y2 + 0.038*S,
+            HW_DARK, edge, a)
+
+    -- Hinge barrels: three knuckles, each with a pin highlight and end cap.
+    for _, px in ipairs({cx - 0.30*S, cx, cx + 0.30*S}) do
+        d_quad_f(px - 0.045*S, y2 + 0.035*S, px + 0.045*S, y2 + 0.035*S,
+                 px + 0.045*S, y2 + 0.075*S, px - 0.045*S, y2 + 0.075*S,
+                 HW_DARK, a)
+        hw_line(px - 0.038*S, y2 + 0.042*S, px + 0.038*S, y2 + 0.042*S,
+                HW_EDGE, edge, a)
+        d_circle_f(px - 0.040*S, y2 + 0.055*S, 0.009*S, HW_BODY, a)
+        d_circle_f(px + 0.040*S, y2 + 0.055*S, 0.009*S, HW_BODY, a)
+    end
+
+    -- Twin angled support arms converge on a compact central mounting foot.
+    d_quad_f(cx - 0.105*S, y2 + 0.070*S, cx - 0.070*S, y2 + 0.070*S,
+             cx - 0.028*S, y2 + 0.155*S, cx - 0.068*S, y2 + 0.155*S, HW_BODY, a)
+    d_quad_f(cx + 0.070*S, y2 + 0.070*S, cx + 0.105*S, y2 + 0.070*S,
+             cx + 0.068*S, y2 + 0.155*S, cx + 0.028*S, y2 + 0.155*S, HW_BODY, a)
+    hw_line(cx - 0.087*S, y2 + 0.080*S, cx - 0.052*S, y2 + 0.145*S, HW_HI, edge, a * 0.50)
+    hw_line(cx + 0.087*S, y2 + 0.080*S, cx + 0.052*S, y2 + 0.145*S, HW_HI, edge, a * 0.50)
+
+    -- Pivot block, central adjustment knob and base plate.
+    d_quad_f(cx - 0.080*S, y2 + 0.145*S, cx + 0.080*S, y2 + 0.145*S,
+             cx + 0.095*S, y2 + 0.205*S, cx - 0.095*S, y2 + 0.205*S, HW_BODY, a)
+    hw_line(cx - 0.085*S, y2 + 0.151*S, cx + 0.085*S, y2 + 0.151*S, HW_HI, edge, a * 0.55)
+    d_circle_f(cx, y2 + 0.174*S, 0.025*S, HW_DARK, a)
+    d_circle(cx, y2 + 0.174*S, 0.025*S, HW_EDGE, edge)
+    hw_line(cx - 0.014*S, y2 + 0.174*S, cx + 0.014*S, y2 + 0.174*S, HW_HI, edge, a)
+    d_quad_f(cx - 0.15*S, y2 + 0.205*S, cx + 0.15*S, y2 + 0.205*S,
+             cx + 0.18*S, y2 + 0.235*S, cx - 0.18*S, y2 + 0.235*S, HW_DARK, a)
+    hw_line(cx - 0.14*S, y2 + 0.209*S, cx + 0.14*S, y2 + 0.209*S, HW_EDGE, edge, a * 0.75)
+    hw_fastener(cx - 0.12*S, y2 + 0.221*S, 0.006*S, k, a)
+    hw_fastener(cx + 0.12*S, y2 + 0.221*S, 0.006*S, k, a)
+
 local FLAP_LABEL = { [0] = "0", "1", "2", "3", "FULL" }
 
 local function draw_cfg(cx, cy, S, k)
@@ -1599,6 +1705,7 @@ local function draw_hud_elements()
         return
     end
 
+    draw_combiner_hardware(cx, cy, S, k)
     draw_combiner(cx, cy, S, k)
 
     local pitch, roll = D.pitch or 0, D.roll or 0
@@ -1827,6 +1934,10 @@ local function settings_body()
     if changed then cfg.hide_external = v; settings_dirty = true end
     changed, v = imgui.Checkbox("Glass combiner / edge", cfg.show_glass)
     if changed then cfg.show_glass = v; settings_dirty = true end
+    changed, v = imgui.Checkbox("Combiner support / mounting hardware", cfg.show_hardware)
+    if changed then cfg.show_hardware = v; settings_dirty = true end
+    changed, v = imgui.SliderFloat("Hardware shading opacity", cfg.hardware_alpha, 0.0, 1.0, "%.2f")
+    if changed then cfg.hardware_alpha = v; settings_dirty = true end
     changed, v = imgui.SliderFloat("HUD size px", cfg.size, 300, 1200, "%.0f")
     if changed then cfg.size = v; settings_dirty = true end
     if imgui.Button("Centre HUD") then xa32_center() end
