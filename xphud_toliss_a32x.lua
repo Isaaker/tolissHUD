@@ -1624,6 +1624,62 @@ local function draw_combiner_hardware(cx, cy, S, k)
     hw_fastener(cx - 0.12*S, y2 + 0.221*S*hardware_scale, 0.006*S, k, a)
     hw_fastener(cx + 0.12*S, y2 + 0.221*S*hardware_scale, 0.006*S, k, a)
 
+    -- Reinforced rear plate and triangular gussets give the mount a layered profile.
+    d_quad_f(cx - 0.19*S, y2 + 0.226*S*hardware_scale,
+             cx + 0.19*S, y2 + 0.226*S*hardware_scale,
+             cx + 0.19*S, y2 + 0.246*S*hardware_scale,
+             cx - 0.19*S, y2 + 0.246*S*hardware_scale, HW_SHADOW, a * 0.72)
+    d_quad_f(cx - 0.155*S, y2 + 0.235*S*hardware_scale,
+             cx - 0.105*S, y2 + 0.235*S*hardware_scale,
+             cx - 0.055*S, y2 + 0.170*S*hardware_scale,
+             cx - 0.092*S, y2 + 0.170*S*hardware_scale, HW_DARK, a * 0.92)
+    d_quad_f(cx + 0.105*S, y2 + 0.235*S*hardware_scale,
+             cx + 0.155*S, y2 + 0.235*S*hardware_scale,
+             cx + 0.092*S, y2 + 0.170*S*hardware_scale,
+             cx + 0.055*S, y2 + 0.170*S*hardware_scale, HW_DARK, a * 0.92)
+    hw_line(cx - 0.145*S, y2 + 0.232*S*hardware_scale,
+            cx - 0.090*S, y2 + 0.178*S*hardware_scale, HW_EDGE, edge, a * 0.55)
+    hw_line(cx + 0.145*S, y2 + 0.232*S*hardware_scale,
+            cx + 0.090*S, y2 + 0.178*S*hardware_scale, HW_EDGE, edge, a * 0.55)
+
+    -- Side hinge cheeks with concentric pivot caps and locking screws.
+    for _, side in ipairs({-1, 1}) do
+        local px = cx + side * 0.30*S
+        local py = y2 + 0.055*S*hardware_scale
+        d_quad_f(px - 0.060*S, py - 0.018*S*hardware_scale,
+                 px + 0.060*S, py - 0.018*S*hardware_scale,
+                 px + 0.060*S, py + 0.040*S*hardware_scale,
+                 px - 0.060*S, py + 0.040*S*hardware_scale, HW_BODY, a * 0.90)
+        hw_line(px - 0.050*S, py - 0.010*S*hardware_scale,
+                px + 0.050*S, py - 0.010*S*hardware_scale, HW_HI, edge, a * 0.48)
+        d_circle_f(px, py + 0.010*S*hardware_scale, 0.025*S, HW_DARK, a)
+        d_circle(px, py + 0.010*S*hardware_scale, 0.025*S, HW_EDGE, edge)
+        d_circle_f(px, py + 0.010*S*hardware_scale, 0.010*S, HW_BODY, a)
+        hw_line(px - 0.006*S, py + 0.010*S*hardware_scale,
+                px + 0.006*S, py + 0.010*S*hardware_scale, HW_HI, edge, a * 0.85)
+        hw_fastener(px + side * 0.043*S, py + 0.030*S*hardware_scale, 0.0055*S, k, a)
+    end
+
+    -- Recessed machining channels on the two support arms.
+    hw_line(cx - 0.074*S, y2 + 0.090*S*hardware_scale,
+            cx - 0.050*S, y2 + 0.137*S*hardware_scale, HW_DARK, math.max(1, 1.5*k), a * 0.80)
+    hw_line(cx + 0.074*S, y2 + 0.090*S*hardware_scale,
+            cx + 0.050*S, y2 + 0.137*S*hardware_scale, HW_DARK, math.max(1, 1.5*k), a * 0.80)
+    hw_line(cx - 0.050*S, y2 + 0.137*S*hardware_scale,
+            cx + 0.050*S, y2 + 0.137*S*hardware_scale, HW_EDGE, edge, a * 0.45)
+
+    -- Small locking lugs and recessed slot marks on the base plate.
+    for _, side in ipairs({-1, 1}) do
+        local lx = cx + side * 0.205*S
+        local ly = y2 + 0.225*S*hardware_scale
+        d_quad_f(lx - 0.028*S, ly - 0.012*S*hardware_scale,
+                 lx + 0.028*S, ly - 0.012*S*hardware_scale,
+                 lx + 0.028*S, ly + 0.012*S*hardware_scale,
+                 lx - 0.028*S, ly + 0.012*S*hardware_scale, HW_BODY, a * 0.90)
+        hw_line(lx - 0.010*S, ly, lx + 0.010*S, ly, HW_DARK, math.max(1, k), a)
+    end
+end
+
 local FLAP_LABEL = { [0] = "0", "1", "2", "3", "FULL" }
 
 local function draw_cfg(cx, cy, S, k)
