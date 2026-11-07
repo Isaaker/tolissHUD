@@ -40,6 +40,9 @@ jobs:
           luac5.4 -o "$tmp_file" xphud_toliss_a32x.lua
           test -s "$tmp_file"
 
+      - name: Run offline Lua tests
+        run: lua5.4 tests/lua/run_tests.lua
+
       - name: Run repository tooling tests
         run: python3 -m unittest discover -s tests -v
 
