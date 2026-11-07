@@ -514,7 +514,8 @@ FAST 46 describes distinct HUD display modes for taxi, take-off, climb/cruise/de
 
 ### 8.5 Combiner and view calibration
 
-- [ ] Make it clear that the current panel is a screen-space visual combiner, not a true HUD optical unit.
+- [x] Make it clear that the current panel is a screen-space visual combiner, not a true HUD optical unit (README wording present).
+- [x] Add an optional 2D hardware illustration around the combiner: upper hood, side rails/clamps, lower retaining channel, hinge knuckles, support arms, pivot block and mounting foot. Adjustable visibility/opacity; explicitly illustrative and screen-space only.
 - [ ] Separate symbology anchor, combiner frame geometry and clipping region; they currently share one centre/size assumption.
 - [ ] Add a calibration pattern for centre boresight, horizon level, known pitch/bank and the combiner perimeter.
 - [ ] Store calibration profiles by display resolution / aspect ratio / aircraft and cockpit view where practicable.
