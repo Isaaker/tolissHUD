@@ -173,7 +173,7 @@ This repository includes GitHub Actions for Lua syntax / tooling CI, secret scan
 
 ## Development roadmap
 
-The detailed engineering roadmap, dataref audit tasks, implementation milestones, acceptance criteria and simulator test matrix are maintained in [`TODO.md`](TODO.md). Tasks are prioritised by data integrity and source correctness before advanced HUD symbology.
+The detailed engineering roadmap, implementation milestones, acceptance criteria and simulator test matrix are maintained in [`TODO.md`](TODO.md). The current active input inventory, evidence levels, unresolved semantics and required simulator captures are recorded in [`DATAREF_AUDIT.md`](DATAREF_AUDIT.md). Tasks are prioritised by data integrity and source correctness before advanced HUD symbology.
 
 ## References
 
