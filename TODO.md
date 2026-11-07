@@ -62,6 +62,9 @@ The following describes the code as reviewed, not a claim that every item is alr
 - [x] FMA text extraction from ToLiss string datarefs; monochrome merge of colour layers.
 - [x] Radio altitude, VS, Mach, GS and barometric readouts.
 - [x] Combiner tint, edge, bevel and user-position / size controls.
+- [x] Stylised 2D mounting hardware with adjustable projected stand-off, angled support struts, hinge details and mounting shoe.
+- [x] Manual night visual profile that softens glass reflections and hardware independently of HUD symbology brightness.
+- [ ] Verify stand-off / mounting proportions and night readability in the ToLiss A320neo cockpit at day, dusk and night; current hardware is a screen-space visual approximation, not an eye-point-correct 3D installation.
 - [x] Diagnostics panel and automatic preference persistence.
 - [x] Original MIT licence and upstream README retained in the release archive.
 
