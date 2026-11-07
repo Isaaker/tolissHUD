@@ -74,6 +74,8 @@ local DEFAULTS = {
     hardware_alpha = 0.72,    -- physical hardware shading opacity
     mount_standoff_cm = 4.0,  -- visual depth cue; not a measured cockpit dimension
     night_profile  = false,   -- soften frame and glass edge for dark scenes
+    startup_splash = true,    -- brief XPHUD identity screen when the script starts
+    animate_deployment = true,-- animate the 2D combiner on show/hide
     glass_alpha    = 0.035,  -- subtle pane tint; keep low to preserve outside visibility
     glass_edge_alpha = 0.22, -- combiner edge / reflection opacity
     theme          = "green", -- green | modern | classic
@@ -1793,6 +1795,11 @@ end
 
 local function set_display_target(visible)
     local now = anim_now()
+    if not cfg.animate_deployment then
+        DISPLAY_ANIM.mode = visible and "deployed" or "stowed"
+        DISPLAY_ANIM.started = now
+        return
+    end
     if visible then
         if DISPLAY_ANIM.mode == "stowed" or DISPLAY_ANIM.mode == "stowing" then
             DISPLAY_ANIM.mode = "deploying"
@@ -1815,6 +1822,10 @@ end
 local function display_animation()
     local now = anim_now()
     if DISPLAY_ANIM.mode == "boot" then
+        if not cfg.startup_splash then
+            DISPLAY_ANIM.mode = "deployed"
+            return 1, false
+        end
         if not DISPLAY_ANIM.started then DISPLAY_ANIM.started = now end
         if now - DISPLAY_ANIM.started < DISPLAY_ANIM.boot_seconds then
             return 0, true
@@ -2146,6 +2157,10 @@ local function settings_body()
     changed, v = imgui.Checkbox("Night visual profile (dim glass and frame)", cfg.night_profile)
     if changed then cfg.night_profile = v; settings_dirty = true end
     caption("Night profile softens the physical overlay; adjust symbol brightness separately.")
+    changed, v = imgui.Checkbox("Startup splash screen", cfg.startup_splash)
+    if changed then cfg.startup_splash = v; settings_dirty = true end
+    changed, v = imgui.Checkbox("Animate combiner deploy / stow", cfg.animate_deployment)
+    if changed then cfg.animate_deployment = v; settings_dirty = true end
     changed, v = imgui.SliderFloat("HUD size px", cfg.size, 300, 1200, "%.0f")
     if changed then cfg.size = v; settings_dirty = true end
     if imgui.Button("Centre HUD") then xa32_center() end
