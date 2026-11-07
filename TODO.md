@@ -153,7 +153,7 @@ No new flight guidance symbol should be implemented until this milestone is comp
 - [ ] Show the resolved ToLiss/X-Plane source path, not just `T` or `X`.
 - [ ] Show the HSI/NAV source selected, receiver 1/2, tuned frequency, decoded ident (when available), ILS/LOC/G/S flags and selected course.
 - [ ] Show both ToLiss and X-Plane raw heading targets, wrapped delta, ToLiss HDG/TRK mode and `APHDGreltoTRK`.
-- [ ] Add an optional CSV/log capture at a controlled low rate (e.g. 5–10 Hz), disabled by default. Include simulator time and aircraft identity; do not write every draw frame.
+- [x] Add opt-in CSV capture, disabled by default, at approximately 1 Hz (wall-clock paced, never every draw frame). Records simulator running time, aircraft profile label, raw candidate values, provider/path, XPLM type mask, selected source and FMA strings. Higher-rate event capture remains a future enhancement.
 - [ ] Add a “copy diagnostic snapshot” action or a plain-text output suitable for posting in a bug report.
 - [ ] Make debug output non-overlapping with the actual HUD; provide a separate diagnostics window or a compact mode.
 
