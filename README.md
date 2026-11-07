@@ -70,6 +70,8 @@ Use the settings panel to adjust:
 
 The combiner is a visual approximation: faint tint, clipped corners, perimeter, bevel and highlight. It does not simulate a physical optical combiner, collimation, parallax, eye tracking, electronic boresighting or the real HUD's optical infinity.
 
+An optional **Combiner support / mounting hardware** layer adds a stylised 2D upper hood, side retaining rails and clamps, lower glass channel, hinge barrels, twin support arms, pivot block and mounting foot. Use **Hardware shading opacity** to soften or strengthen the metal treatment. This is deliberately an illustrative screen-space effect, not a dimensionally accurate representation of the ToLiss cockpit or a 3D-mounted part; it does not alter the combiner's optical behaviour.
+
 FlyWithLua's bitmap-font drawing functions do not expose glyph alpha like the primitive drawing API. **Symbology brightness** therefore changes font brightness, while glass opacity changes the actual transparency of the pane and edge primitives.
 
 ## Heading and track calibration
