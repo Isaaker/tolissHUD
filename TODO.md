@@ -65,6 +65,8 @@ The following describes the code as reviewed, not a claim that every item is alr
 - [x] Stylised 2D mounting hardware with adjustable projected stand-off, angled support struts, hinge details and mounting shoe.
 - [x] Manual night visual profile that softens glass reflections and hardware independently of HUD symbology brightness.
 - [ ] Verify stand-off / mounting proportions and night readability in the ToLiss A320neo cockpit at day, dusk and night; current hardware is a screen-space visual approximation, not an eye-point-correct 3D installation.
+- [x] Add optional XPHUD startup splash and 2D combiner deploy / stow animation.
+- [ ] Verify startup timing, deploy / stow direction, clipping and readability in the simulator at the user's normal cockpit view.
 - [x] Diagnostics panel and automatic preference persistence.
 - [x] Original MIT licence and upstream README retained in the release archive.
 
