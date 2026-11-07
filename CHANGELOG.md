@@ -5,6 +5,16 @@
 - Read scalar datarefs with a getter selected from X-Plane's reported type; skip and report unsupported types instead of silently treating a mismatched read as zero.
 - Validate loaded preferences against supported boolean, enum and numeric values, and report load/save failures in the FlyWithLua log.
 
+## 2.3.0 — Overhead-unit hardware and eye distance
+
+- Rebuilt the 2D combiner hardware. The glareshield-mounted shoe and struts are gone: an overhead unit (underside with projector window, rear face with vents and identification plate) now sits above the pilot, and the combiner hangs from a hinge bar with pivot blocks, side and lower frame rails and a latch tab. Parts are drawn through a small pinhole model, so the glass is a slight trapezoid whose convergence grows as the combiner gets closer.
+- Replaced **Mount stand-off** with **Eye distance (visual cm)**, 45–120, default 70. It scales glass, symbology and hardware together; the default sits further from the pilot's face than before. A saved `size` is kept, so the HUD draws about 14 % smaller at the default distance.
+- Deploy / stow now swings the combiner down on its hinge, then fades the symbology in. Hardware and glass are no longer dimmed by the symbology brightness control, and the projector window glows only while data is valid.
+- Added a calibration pattern (settings checkbox, not saved): level horizon, bank scale, boresight and glass outline, drawn with the live symbol code.
+- Preferences are now versioned (`prefs_version`) with a migration step, written atomically and ended with a marker so interrupted writes are recognised. Migration removes `mount_standoff_cm` and moves the old default hardware opacity (0.72) to the new default (0.92).
+- All bearing wraps now use one `wrap180()` / `wrap360()` pair.
+- Added an offline Lua test harness (`tests/lua/`) with a FlyWithLua mock, an SVG renderer and 400+ checks, run in CI, and `tools/preview_hud.py` to render a PNG preview without the simulator.
+
 ## 2.2.0 — ILS / heading refinement
 
 - Moved the G/S deviation scale inboard to avoid collision with the altitude tape.

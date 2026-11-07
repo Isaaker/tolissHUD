@@ -1,8 +1,8 @@
--- XPHUD for FlyWithLua v2.2.0 ToLiss A32X edition ---------------------------
+-- XPHUD for FlyWithLua v2.3.0 ToLiss A32X edition ---------------------------
 -- SPDX-License-Identifier: MIT
 -- Copyright (c) 2026 xbard                (original XPHUD for FlyWithLua v2.0.0)
 -- Copyright (c) 2026 Control_TWR        (ToLiss A32X edition and enhancements)
--- See LICENSE.  Version 2.2.0 (ToLiss A32X edition)
+-- See LICENSE.  Version 2.3.0 (ToLiss A32X edition)
 --
 -- MODIFIED VERSION.  This file is derived from "XPHUD for FlyWithLua" v2.0.0 by
 -- xbard (https://xpconnect.me), released under the MIT licence.  It is an
@@ -29,6 +29,8 @@
 --     * new default profile: Airbus A32X HUD, colour theme "green" by default
 --     * numeric dataref availability drives failure flags (not Capt*Valid alone)
 --     * translucent combiner pane, beveled edge and adjustable glass opacity
+--     * 2.3.0: combiner hardware redrawn as an overhead unit with a hinged,
+--       perspective combiner, and an adjustable eye distance (see README)
 --     * helicopter set (hover arrow, landing bars, NR%, VRS), weapons/combat
 --       set and force-trim were removed (they do not apply to an airliner, and
 --       the trim code wrote joystick override datarefs)
@@ -50,7 +52,7 @@
 
 require("graphics")
 
-local EDITION = "XPHUD for FlyWithLua v2.2.0 ToLiss A32X edition"
+local EDITION = "XPHUD for FlyWithLua v2.3.0 ToLiss A32X edition"
 
 if not SUPPORTS_FLOATING_WINDOWS then
     logMsg("XPHUD A32X: this FlyWithLua build has no floating-window/imgui support; "
@@ -70,9 +72,9 @@ local DEFAULTS = {
     hud_alpha      = 1.0,     -- symbology brightness (bitmap fonts do not expose glyph alpha)
     plate_alpha    = 0.0,     -- dark backing behind individual readouts (0 = off)
     show_glass     = true,    -- draw the transparent combiner pane and its subtle edge
-    show_hardware  = true,    -- draw the 2D combiner support, hinge blocks and mounting bracket
-    hardware_alpha = 0.72,    -- physical hardware shading opacity
-    mount_standoff_cm = 4.0,  -- visual depth cue; not a measured cockpit dimension
+    show_hardware  = true,    -- draw the overhead unit, hinge and combiner frame
+    hardware_alpha = 0.92,    -- hardware opacity (1 = solid dark metal)
+    eye_distance_cm = 70,     -- visual eye-to-combiner distance; scales the whole assembly
     night_profile  = false,   -- soften frame and glass edge for dark scenes
     startup_splash = true,    -- brief XPHUD identity screen when the script starts
     animate_deployment = true,-- animate the 2D combiner on show/hide
@@ -126,7 +128,7 @@ local PREF_BOUNDS = {
     hud_alpha = { 0.2, 1 },
     plate_alpha = { 0, 1 },
     hardware_alpha = { 0, 1 },
-    mount_standoff_cm = { 0, 8 },
+    eye_distance_cm = { 45, 120 },
     glass_alpha = { 0, 0.18 },
     glass_edge_alpha = { 0, 0.8 },
     ladder_deg = { 8, 30 },
@@ -207,6 +209,11 @@ local ILS_SOURCE_ORDER = { "auto", "xplane", "toliss" }
 local KT_PER_MS = 1.0 / 0.514444
 local FT_PER_M  = 1.0 / 0.3048
 local atan2 = math.atan2 or math.atan
+
+-- Angle helpers: the only place bearings / courses are wrapped.  Lua's % takes
+-- the sign of the divisor, so both results are well defined for any input.
+local function wrap360(a) return a % 360 end             -- [0, 360)
+local function wrap180(a) return (a + 180) % 360 - 180 end -- [-180, 180)
 
 -- ------------------------------------------------------------ data layer --
 -- Dataref types must be checked before choosing a scalar getter: X-Plane does
@@ -415,7 +422,7 @@ local function read_inputs()
         if target == nil then target, target_src = D.hdg_sel_t, (D.hdg_sel_t ~= nil and "T" or "-") end
     end
     if target ~= nil then
-        D.hdg_sel = (target + (cfg.hdg_sel_offset or 0)) % 360
+        D.hdg_sel = wrap360(target + (cfg.hdg_sel_offset or 0))
     else
         D.hdg_sel = nil
     end
@@ -642,18 +649,73 @@ local vis_last       = nil
 local draw_error_count = 0
 
 -- ---------------------------------------------------------- persistence --
+-- The preferences file is plain key=value text.  It carries a format version
+-- (prefs_version) so a renamed or re-purposed setting can be migrated instead
+-- of silently reinterpreted, and it is replaced atomically on save so a crash
+-- or full disk cannot leave a half-written file in place of the old one.
+
+local PREFS_VERSION = 2
+local PREFS_END_MARK = "# end of preferences"
+
+-- PREF_MIGRATIONS[n] upgrades the raw (string-valued) table from version n to
+-- n + 1.  Files written before versioning existed are treated as version 1.
+local PREF_MIGRATIONS = {
+    [1] = function(raw)
+        -- 2.3.0: the 2D "mount stand-off" strut length was replaced by the
+        -- eye-to-combiner distance, and the hardware was redrawn as an
+        -- overhead unit.  Drop the old key and move the old default opacity
+        -- (0.72) to the new default instead of keeping a ghostly frame.
+        raw.mount_standoff_cm = nil
+        if tonumber(raw.hardware_alpha) == 0.72 then raw.hardware_alpha = nil end
+        return raw
+    end,
+}
+
+local function migrate_prefs(raw, version)
+    local v = tonumber(version) or 1
+    while v < PREFS_VERSION do
+        local step = PREF_MIGRATIONS[v]
+        if step then raw = step(raw) or raw end
+        v = v + 1
+    end
+    return raw
+end
 
 local function prefs_file()
     local base = SYSTEM_DIRECTORY or ""
     return base .. "Output/preferences/xphud_toliss_a32x.prefs"
 end
 
+-- Write `text` to `path` through a temporary file.  os.rename() replaces an
+-- existing file on macOS / Linux but not on Windows, so a failed rename is
+-- retried after removing the old file; the last resort is a plain overwrite.
+local function write_file_atomic(path, text)
+    local tmp = path .. ".tmp"
+    local f, err = io.open(tmp, "w")
+    if not f then return false, err end
+    local w_ok, w_err = f:write(text)
+    local c_ok, c_err = f:close()
+    if not w_ok or not c_ok then
+        os.remove(tmp)
+        return false, w_err or c_err or "write failed"
+    end
+    if os.rename(tmp, path) then return true end
+    os.remove(path)
+    if os.rename(tmp, path) then return true end
+    os.remove(tmp)
+    local g, gerr = io.open(path, "w")
+    if not g then return false, gerr end
+    local ok, perr = g:write(text)
+    local cl_ok, cl_err = g:close()
+    if not ok or not cl_ok then return false, perr or cl_err or "write failed" end
+    return true
+end
+
 local function save_prefs()
     local ok, err = pcall(function()
-        local f = io.open(prefs_file(), "w")
-        if not f then error("could not open preferences file for writing") end
         local lines = {
             "# " .. EDITION .. " preferences - edit via the in-sim settings window\n",
+            string.format("prefs_version=%d\n", PREFS_VERSION),
         }
         local keys = {}
         for k in pairs(DEFAULTS) do keys[#keys + 1] = k end
@@ -661,13 +723,42 @@ local function save_prefs()
         for _, k in ipairs(keys) do
             lines[#lines + 1] = string.format("%s=%s\n", k, tostring(cfg[k]))
         end
-        local write_ok, write_err = f:write(table.concat(lines))
-        local close_ok, close_err = f:close()
-        if not write_ok then error(write_err or "could not write preferences file") end
-        if not close_ok then error(close_err or "could not close preferences file") end
+        lines[#lines + 1] = PREFS_END_MARK .. "\n"
+        local w_ok, w_err = write_file_atomic(prefs_file(), table.concat(lines))
+        if not w_ok then error(w_err or "could not write preferences file") end
     end)
     if not ok then
         logMsg("XPHUD A32X: preferences save error: " .. tostring(err))
+    end
+end
+
+-- Validate one raw string value against the type / range / options of its default.
+local function apply_pref(k, v)
+    local dv = DEFAULTS[k]
+    if type(dv) == "boolean" then
+        if v == "true" or v == "false" then
+            cfg[k] = (v == "true")
+        else
+            logMsg("XPHUD A32X: invalid boolean preference '" .. k .. "'; using default")
+        end
+    elseif type(dv) == "number" then
+        local n = tonumber(v)
+        local bounds = PREF_BOUNDS[k]
+        if not n or n ~= n or n == math.huge or n == -math.huge then
+            logMsg("XPHUD A32X: invalid numeric preference '" .. k .. "'; using default")
+        elseif bounds and (n < bounds[1] or n > bounds[2]) then
+            logMsg("XPHUD A32X: out-of-range preference '" .. k .. "'; clamping to supported range")
+            cfg[k] = math.max(bounds[1], math.min(bounds[2], n))
+        else
+            cfg[k] = n
+        end
+    else
+        local options = PREF_OPTIONS[k]
+        if not options or options[v] then
+            cfg[k] = v
+        else
+            logMsg("XPHUD A32X: invalid option preference '" .. k .. "'; using default")
+        end
     end
 end
 
@@ -675,38 +766,26 @@ local function load_prefs()
     local ok, err = pcall(function()
         local f = io.open(prefs_file(), "r")
         if not f then return end
+        local raw, saw_end, any = {}, false, false
         for line in f:lines() do
+            if line == PREFS_END_MARK then saw_end = true end
             local k, v = line:match("^([%w_]+)=(.*)$")
-            if k and DEFAULTS[k] ~= nil then
-                local dv = DEFAULTS[k]
-                if type(dv) == "boolean" then
-                    if v == "true" or v == "false" then
-                        cfg[k] = (v == "true")
-                    else
-                        logMsg("XPHUD A32X: invalid boolean preference '" .. k .. "'; using default")
-                    end
-                elseif type(dv) == "number" then
-                    local n = tonumber(v)
-                    local bounds = PREF_BOUNDS[k]
-                    if not n or n ~= n or n == math.huge or n == -math.huge then
-                        logMsg("XPHUD A32X: invalid numeric preference '" .. k .. "'; using default")
-                    elseif bounds and (n < bounds[1] or n > bounds[2]) then
-                        logMsg("XPHUD A32X: out-of-range preference '" .. k .. "'; clamping to supported range")
-                        cfg[k] = math.max(bounds[1], math.min(bounds[2], n))
-                    else
-                        cfg[k] = n
-                    end
-                else
-                    local options = PREF_OPTIONS[k]
-                    if not options or options[v] then
-                        cfg[k] = v
-                    else
-                        logMsg("XPHUD A32X: invalid option preference '" .. k .. "'; using default")
-                    end
-                end
-            end
+            if k then raw[k] = v; any = true end
         end
         f:close()
+        if any and not saw_end then
+            logMsg("XPHUD A32X: preferences file has no end marker (older version or interrupted "
+                .. "write); using every valid entry")
+        end
+        local version = tonumber(raw.prefs_version) or 1
+        raw.prefs_version = nil
+        if version > PREFS_VERSION then
+            logMsg("XPHUD A32X: preferences were written by a newer version; unknown keys are ignored")
+        end
+        raw = migrate_prefs(raw, version)
+        for k, v in pairs(raw) do
+            if DEFAULTS[k] ~= nil then apply_pref(k, v) end
+        end
     end)
     if not ok then
         logMsg("XPHUD A32X: preferences load error: " .. tostring(err))
@@ -720,6 +799,11 @@ load_prefs()
 local function clamp(v, lo, hi)
     if v < lo then return lo elseif v > hi then return hi end
     return v
+end
+
+local function smoothstep(t)
+    t = clamp(t, 0, 1)
+    return t * t * (3 - 2 * t)
 end
 
 local function ival(v)
@@ -946,7 +1030,7 @@ local function fpv_angles()
     local gs = D.gs_ms
     local gamma = math.deg(atan2(D.vy or 0, gs))
     local track = math.deg(atan2(D.vx or 0, -(D.vz or 0)))
-    local drift = ((track - (D.psi_true or 0)) + 540) % 360 - 180
+    local drift = wrap180(track - (D.psi_true or 0))
     return gamma, drift
 end
 
@@ -1192,7 +1276,7 @@ local function draw_hdg(cx, cy, S, k, th, drift, pitch, roll)
     local hdg = D.hdg or 0
     local trk_mode = (D.hdg_trk or 0) == 1
     local base = hdg
-    if trk_mode and drift ~= nil then base = (hdg + drift) % 360 end
+    if trk_mode and drift ~= nil then base = wrap360(hdg + drift) end
 
     local ppd = cfg.hdg_scale_horizon and (0.4 * S / math.max(cfg.ladder_deg, 1)) or (0.35 * S / 25)
     local half_deg = cfg.hdg_scale_horizon and clamp(math.floor(0.34 * S / ppd), 10, 25) or 25
@@ -1213,8 +1297,8 @@ local function draw_hdg(cx, cy, S, k, th, drift, pitch, roll)
 
     local start = math.floor((base - half_deg) / 5) * 5
     for m = start, start + 2 * half_deg + 5, 5 do
-        local h = (m % 360 + 360) % 360
-        local rel = (h - base + 540) % 360 - 180
+        local h = wrap360(m)
+        local rel = wrap180(h - base)
         if math.abs(rel) <= half_deg then
             local x, y = point(rel, 0)
             local len = (h % 10 == 0) and 0.022 * S or 0.012 * S
@@ -1235,7 +1319,7 @@ local function draw_hdg(cx, cy, S, k, th, drift, pitch, roll)
     local cx2, cy2 = point(0, 0.022 * S)
     d_line(cx1, cy1, cx2, cy2, COL.center, th)
     local tx, ty = point(0, -0.058 * S)
-    draw_text(tx, ty, string.format("%03d", math.floor(base + 0.5) % 360),
+    draw_text(tx, ty, string.format("%03d", wrap360(math.floor(base + 0.5))),
               COL.text, 1.2 * k, 0, true)
     if trk_mode then
         local lx, ly = point(0.14 * S / ppd, -0.058 * S)
@@ -1259,15 +1343,15 @@ local function draw_hdg(cx, cy, S, k, th, drift, pitch, roll)
     -- ILS front-course reference on the same magnetic/track scale.  This is
     -- an intercept-angle aid, not the Airbus conformal LOC-axis symbol.
     if (D.ils_on or 0) > 0.5 and D.ils_crs ~= nil and D.ils_crs >= 0 and D.ils_crs <= 360 then
-        local crs = D.ils_crs % 360
-        local rel = clamp((crs - base + 540) % 360 - 180, -half_deg, half_deg)
+        local crs = wrap360(D.ils_crs)
+        local rel = clamp(wrap180(crs - base), -half_deg, half_deg)
         local ix, iy = point(rel, -0.030 * S)
         local d = 0.009 * S
         d_quad(ix, iy - d, ix + d, iy, ix, iy + d, ix - d, iy, COL.ils, th * 0.85)
     end
 
     if cfg.show_targets and D.hdg_sel ~= nil and (D.hdg_dash or 0) ~= 1 and (D.hdg_man or 0) ~= 1 then
-        local rel = clamp((D.hdg_sel - base + 540) % 360 - 180, -half_deg, half_deg)
+        local rel = clamp(wrap180(D.hdg_sel - base), -half_deg, half_deg)
         local bx, by = point(rel, -0.004 * S)
         local d = 0.010 * S
         local b1x, b1y = point(rel - d / ppd, -0.004 * S - 1.6 * d)
@@ -1320,15 +1404,15 @@ local function draw_ils(cx, cy, S, k, th)
     end
 
     if ils_active and D.ils_crs ~= nil and D.ils_crs >= 0 and D.ils_crs <= 360 then
-        local crs = math.floor(D.ils_crs + 0.5) % 360
+        local crs = wrap360(math.floor(D.ils_crs + 0.5))
         draw_text(cx, cy + 0.405 * S, string.format("ILS CRS %03d", crs), COL.units, 0.85 * k, 0, true)
 
         -- Course-to-track angular difference: useful for situational awareness
         -- during intercept setup, but not a lateral-deviation or capture predictor.
         local _, drift = fpv_angles()
         if D.hdg ~= nil and drift ~= nil then
-            local track = (D.hdg + drift) % 360
-            local delta = ((crs - track + 540) % 360) - 180
+            local track = wrap360(D.hdg + drift)
+            local delta = wrap180(crs - track)
             local rounded = math.floor(delta + (delta >= 0 and 0.5 or -0.5))
             draw_text(cx, cy + 0.445 * S, string.format("CRS - TRK  %+03d deg", rounded),
                       COL.units, 0.78 * k, 0, true)
@@ -1459,257 +1543,362 @@ local function draw_flags(cx, cy, S, k, th, v_ias, v_alt, v_att, v_hdg)
     if not v_hdg then draw_text(cx, cy + 0.41 * S, "HDG", COL.caution, 1.6 * k, 0, true) end
 end
 
--- Transparent HUD combiner.  This is deliberately only a subtle screen-space
--- treatment: it suggests the glass edge and a faint reflection without putting
--- an opaque panel over the scenery.  The overlay is centred on the same anchor
--- as the symbology, so all X/Y calibration remains shared.
+-- ------------------------------------------- overhead unit and combiner --
+-- A Head-Up Display in an Airbus cockpit is not a stand on the glareshield: an
+-- Overhead Unit (OHU) is fixed to the roof above and ahead of the pilot's head
+-- and the glass combiner hangs from a hinge on its front edge.  This section
+-- draws that arrangement in the 2D FlyWithLua layer, using a small pinhole
+-- model so the parts have consistent perspective:
+--
+--   * eye space is in centimetres: X right, Y up, Z forward from the eye;
+--   * the combiner is a flat plate that hangs from the hinge and leans so that
+--     its lower edge is slightly nearer the pilot (a gentle trapezoid whose
+--     convergence grows as the eye distance shrinks);
+--   * the OHU is a box above the hinge, seen from below and behind - its
+--     underside with the projector window, and its rear face;
+--   * the whole assembly is scaled by REF / eye_distance, so a larger
+--     "eye distance" moves it away from the pilot's face.
+--
+-- It is an illustration drawn in screen space, centred on the same anchor as
+-- the symbology.  It is NOT a measured ToLiss installation, not collimated and
+-- it has no head-motion parallax; nothing here reads or drives aircraft state.
+
 local GLASS_TINT = { 0.16, 0.28, 0.20 }
 local GLASS_EDGE = { 0.36, 0.78, 0.48 }
 local GLASS_HI   = { 0.72, 0.94, 0.80 }
 local GLASS_SHADE= { 0.06, 0.22, 0.11 }
 
-local function draw_combiner(cx, cy, S, k)
-    if not cfg.show_glass then return end
+local HW_BODY  = { 0.080, 0.086, 0.092 }
+local HW_DARK  = { 0.020, 0.024, 0.028 }
+local HW_EDGE  = { 0.30, 0.33, 0.35 }
+local HW_HI    = { 0.52, 0.56, 0.58 }
+local OHU_UNDER_NEAR = { 0.030, 0.034, 0.038 }   -- underside next to the hinge lip
+local OHU_UNDER_FAR  = { 0.070, 0.076, 0.082 }   -- underside next to the rear edge
+local OHU_BACK_LOW   = { 0.150, 0.158, 0.168 }   -- rear face, lit from the cabin
+local OHU_BACK_HIGH  = { 0.070, 0.074, 0.080 }
+local OHU_LIP        = { 0.230, 0.245, 0.255 }
+local WINDOW_DARK    = { 0.006, 0.012, 0.010 }
+local WINDOW_GLOW    = { 0.30, 1.00, 0.42 }
 
-    local x1, x2 = cx - 0.515 * S, cx + 0.515 * S
-    local y1, y2 = cy - 0.535 * S, cy + 0.485 * S
-    local c = 0.026 * S
-    local pts = {
-        {x1 + c, y1}, {x2 - c, y1}, {x2, y1 + c}, {x2, y2 - c},
-        {x2 - c, y2}, {x1 + c, y2}, {x1, y2 - c}, {x1, y1 + c},
-    }
+local EYE_REF_CM, EYE_MIN_CM, EYE_MAX_CM = 60, 45, 120
 
-    -- Night mode suppresses pane tint and edge reflections, not the flight
-    -- symbology. This is a visual aid only; it is not photometric adaptation.
-    local night_glass = cfg.night_profile and 0.32 or 1.0
-    local tint = clamp(cfg.glass_alpha or 0.035, 0, 0.18) * night_glass
-    if tint > 0.001 then
-        for i = 1, #pts do
-            local j = (i % #pts) + 1
-            d_tri_f(cx, cy, pts[i][1], pts[i][2], pts[j][1], pts[j][2], GLASS_TINT, tint)
-        end
-    end
+local HW = {
+    ppc        = 0.05,   -- pixels per cm per unit of HUD size, at the design depth
+    glass_hw   = 10.8,   -- glass half width, cm
+    glass_len  = 23.0,   -- glass length along the plate measured from the hinge line, cm
+    hinge_bar  = 1.0,    -- hinge bar covering the top of the glass, cm
+    rail_w     = 0.8,    -- side rail width, cm
+    rail_bot   = 1.2,    -- lower rail width, cm
+    tilt       = 12,     -- deployed lean from vertical (lower edge towards the pilot), deg
+    tilt_stow  = 65,     -- the deploy swing starts from this angle, deg
+    centre_y   = 1.0,    -- lifts the plate so the symbology centre sits mid-glass, cm
+    ohu_hw     = 11.8,   -- overhead unit half width, cm
+    ohu_depth  = 8.5,    -- overhead unit depth towards the pilot, cm
+    ohu_height = 6.5,    -- visible height of the overhead unit rear face, cm
+}
 
-    local night_edge = cfg.night_profile and 0.55 or 1.0
-    local edge = clamp(cfg.glass_edge_alpha or 0.22, 0, 0.8) * night_edge
-    if edge <= 0.001 then return end
-    local w = math.max(1.0, 1.0 * k)
-
-    -- Outer glass perimeter: thin, low-contrast green edge with clipped corners.
-    for i = 1, #pts do
-        local j = (i % #pts) + 1
-        d_line_a(pts[i][1], pts[i][2], pts[j][1], pts[j][2], GLASS_EDGE, w, edge)
-    end
-
-    -- Inner bevel highlight along the upper and left edges; lower/right edges
-    -- are darker, giving the pane a little depth without a heavy bezel.
-    local inset = math.max(2.0, 0.006 * S)
-    d_line_a(x1 + c, y1 + inset, x2 - c, y1 + inset, GLASS_HI, math.max(1, 0.65 * k), edge * 0.42)
-    d_line_a(x1 + inset, y1 + c, x1 + inset, y2 - c, GLASS_HI, math.max(1, 0.65 * k), edge * 0.30)
-    d_line_a(x1 + c, y2 - inset, x2 - c, y2 - inset, GLASS_SHADE, math.max(1, 0.8 * k), edge * 0.36)
-    d_line_a(x2 - inset, y1 + c, x2 - inset, y2 - c, GLASS_SHADE, math.max(1, 0.8 * k), edge * 0.30)
-
-    -- A second, extremely restrained inner gasket line makes the pane read
-    -- as laminated glass seated in a channel rather than a floating outline.
-    local gasket = inset * 2.2
-    d_line_a(x1 + c + gasket, y1 + gasket, x2 - c - gasket, y1 + gasket,
-             GLASS_SHADE, math.max(1, 0.55 * k), edge * 0.13)
-    d_line_a(x1 + gasket, y1 + c + gasket, x1 + gasket, y2 - c - gasket,
-             GLASS_HI, math.max(1, 0.45 * k), edge * 0.10)
-    d_line_a(x2 - gasket, y1 + c + gasket, x2 - gasket, y2 - c - gasket,
-             GLASS_SHADE, math.max(1, 0.45 * k), edge * 0.12)
-
-    -- Very faint specular glint in the upper-right corner of the combiner.
-    d_line_a(x2 - 0.19 * S, y1 + 0.035 * S, x2 - 0.055 * S, y1 + 0.17 * S,
-             GLASS_HI, math.max(1, 0.75 * k), edge * 0.22)
-    d_line_a(x2 - 0.145 * S, y1 + 0.035 * S, x2 - 0.055 * S, y1 + 0.125 * S,
-             GLASS_HI, math.max(1, 0.55 * k), edge * 0.14)
+local function lerp(a, b, t) return a + (b - a) * t end
+local function lerp_col(c1, c2, t)
+    return { lerp(c1[1], c2[1], t), lerp(c1[2], c2[2], t), lerp(c1[3], c2[3], t) }
 end
 
--- Stylised 2D combiner mounting hardware. This is intentionally a
--- screen-space illustration, not a claim of exact ToLiss cockpit geometry.
--- Dark metal parts sit behind the glass; machined edges, hinge pins and
--- fasteners add depth while keeping the central viewing area unobstructed.
-local HW_BODY  = { 0.075, 0.090, 0.085 }
-local HW_DARK  = { 0.025, 0.032, 0.030 }
-local HW_EDGE  = { 0.30, 0.35, 0.32 }
-local HW_HI    = { 0.48, 0.53, 0.49 }
-local HW_SHADOW= { 0.012, 0.018, 0.016 }
-local HW_MARK  = { 0.18, 0.22, 0.19 }
+local function eye_distance()
+    return clamp(tonumber(cfg.eye_distance_cm) or DEFAULTS.eye_distance_cm, EYE_MIN_CM, EYE_MAX_CM)
+end
 
-local function hw_line(x1, y1, x2, y2, col, width, alpha)
-    d_line_a(x1, y1, x2, y2, col, width, alpha)
+-- Uniform scale of glass + symbology + hardware: 1.0 at the 60 cm reference.
+local function eye_scale()
+    return clamp(EYE_REF_CM / eye_distance(), 0.5, 1.4)
+end
+
+-- Projection model for one frame.  `swing` is 1 for the deployed combiner and 0
+-- for the folded one (the plate rotates about the hinge line).
+local function assembly_geometry(cx, cy, S, swing)
+    local d = eye_distance()
+    swing = clamp(swing or 1, 0, 1)
+    local ppc = HW.ppc * S
+    local rest = math.rad(HW.tilt)
+    local th = math.rad(HW.tilt + (1 - swing) * (HW.tilt_stow - HW.tilt))
+    local half = HW.glass_len / 2
+    local zh = d + half * math.sin(rest)                 -- hinge depth
+    local yh = half * math.cos(rest) + HW.centre_y       -- hinge height over the eye line
+    local sn, cs = math.sin(th), math.cos(th)
+    local g = { d = d, ppc = ppc, yh = yh, zh = zh, cx = cx, cy = cy }
+    function g.O(x, y, z)                                -- eye space (cm) -> screen px, y down
+        if z < 4 then z = 4 end
+        local f = d / z
+        return cx + x * ppc * f, cy - y * ppc * f
+    end
+    function g.P(x, s)                                   -- plate coords (cm, cm below hinge) -> px
+        return g.O(x, yh - s * cs, zh - s * sn)
+    end
+    local hw, L, bar = HW.glass_hw, HW.glass_len, HW.hinge_bar
+    g.glass = { { g.P(-hw, bar) }, { g.P(hw, bar) }, { g.P(hw, L) }, { g.P(-hw, L) } }
+    return g
+end
+
+-- Filled rectangle / line given in plate coordinates.
+local function pq(g, x1, s1, x2, s2, col, a)
+    local ax, ay = g.P(x1, s1)
+    local bx, by = g.P(x2, s1)
+    local qx, qy = g.P(x2, s2)
+    local dx, dy = g.P(x1, s2)
+    d_quad_f(ax, ay, bx, by, qx, qy, dx, dy, col, a)
+end
+local function pl(g, x1, s1, x2, s2, col, w, a)
+    local ax, ay = g.P(x1, s1)
+    local bx, by = g.P(x2, s2)
+    d_line_a(ax, ay, bx, by, col, w, a)
+end
+-- Filled quad / line given in eye space.
+local function oq(g, x1, y1, z1, x2, y2, z2, x3, y3, z3, x4, y4, z4, col, a)
+    local ax, ay = g.O(x1, y1, z1)
+    local bx, by = g.O(x2, y2, z2)
+    local qx, qy = g.O(x3, y3, z3)
+    local dx, dy = g.O(x4, y4, z4)
+    d_quad_f(ax, ay, bx, by, qx, qy, dx, dy, col, a)
+end
+local function ol(g, x1, y1, z1, x2, y2, z2, col, w, a)
+    local ax, ay = g.O(x1, y1, z1)
+    local bx, by = g.O(x2, y2, z2)
+    d_line_a(ax, ay, bx, by, col, w, a)
 end
 
 local function hw_fastener(x, y, r, k, alpha)
     d_circle_f(x, y, r, HW_DARK, alpha)
     d_circle(x, y, r, HW_EDGE, math.max(1, 0.8 * k))
-    hw_line(x - r * 0.42, y, x + r * 0.42, y, HW_HI, math.max(1, 0.65 * k), alpha * 0.8)
+    d_line_a(x - r * 0.42, y, x + r * 0.42, y, HW_HI, math.max(1, 0.65 * k), alpha * 0.8)
 end
 
-local function draw_combiner_hardware(cx, cy, S, k)
-    if not cfg.show_hardware then return end
-    -- A night profile dims only the physical frame. The green HUD symbols retain
-    -- their independent "Symbology brightness" control.
-    local night_hardware = cfg.night_profile and 0.42 or 1.0
-    local a = clamp(cfg.hardware_alpha or 0.72, 0, 1) * night_hardware
-    if a <= 0.01 then return end
+-- Overhead unit: underside with the projector window, and the rear face.
+-- `glow` (0..1) is how brightly the projector window shines.
+local function draw_overhead_unit(g, k, a, glow)
+    local W, yh, zh = HW.ohu_hw, g.yh, g.zh
+    local zb = zh - HW.ohu_depth
+    local top = yh + HW.ohu_height
+    local lw = math.max(1, 1.2 * k)
 
-    local x1, x2 = cx - 0.515 * S, cx + 0.515 * S
-    local y1, y2 = cy - 0.535 * S, cy + 0.485 * S
-    local c = 0.026 * S
-    -- The adjustable stand-off is represented by longer 2D support struts.
-    -- It gives a little more apparent clearance from the pilot, but cannot
-    -- reproduce a real translation in depth or eye-point parallax.
-    local stand_off = clamp(cfg.mount_standoff_cm or 4.0, 0, 8) / 8
-    local mount_drop = 0.235 + 0.070 * stand_off
-    -- Compress the bracket vertically if the HUD is close to the lower screen edge.
-    local hardware_scale = clamp((SH - y2 - 8) / (mount_drop * S), 0, 1)
-    local mount_y = y2 + mount_drop * S * hardware_scale
-    local w = math.max(1.2, 0.0045 * S)
+    -- Underside: dark at the hinge lip, lighter towards the rear edge.
+    local n = 5
+    for i = 0, n - 1 do
+        local t0, t1 = i / n, (i + 1) / n
+        local za, zc = lerp(zh, zb, t0), lerp(zh, zb, t1)
+        oq(g, -W, yh, za, W, yh, za, W, yh, zc, -W, yh, zc,
+           lerp_col(OHU_UNDER_NEAR, OHU_UNDER_FAR, (t0 + t1) / 2), a)
+    end
+
+    -- Projector exit window, recessed in the underside, with its glow.
+    local wx, wz0, wz1 = 8.2, zh - 1.8, zh - 7.4
+    oq(g, -wx, yh, wz0, wx, yh, wz0, wx, yh, wz1, -wx, yh, wz1, WINDOW_DARK, a)
+    if glow > 0.01 then
+        local m = 4
+        for i = 0, m - 1 do
+            local za, zc = lerp(wz0, wz1, i / m), lerp(wz0, wz1, (i + 1) / m)
+            oq(g, -wx + 0.4, yh, za, wx - 0.4, yh, za, wx - 0.4, yh, zc, -wx + 0.4, yh, zc,
+               WINDOW_GLOW, a * glow * (0.16 - 0.03 * i))
+        end
+    end
+    ol(g, -wx, yh, wz0, wx, yh, wz0, HW_EDGE, lw, a * 0.50)
+    ol(g, -wx, yh, wz1, wx, yh, wz1, HW_DARK, lw, a)
+    ol(g, -wx, yh, wz0, -wx, yh, wz1, HW_DARK, lw, a)
+    ol(g, wx, yh, wz0, wx, yh, wz1, HW_EDGE, lw, a * 0.40)
+
+    -- Chamfered front lip along the hinge line, where the combiner is attached.
+    oq(g, -W, yh, zh, W, yh, zh, W, yh, zh - 0.8, -W, yh, zh - 0.8, OHU_LIP, a * 0.55)
+    ol(g, -W, yh, zh, W, yh, zh, HW_HI, lw, a * 0.60)
+
+    -- Rear face, lit by the cabin: lighter at the bottom, darker towards the roof.
+    local m = 6
+    for i = 0, m - 1 do
+        local t0, t1 = i / m, (i + 1) / m
+        local ya, yb = lerp(yh, top, t0), lerp(yh, top, t1)
+        oq(g, -W, ya, zb, W, ya, zb, W, yb, zb, -W, yb, zb,
+           lerp_col(OHU_BACK_LOW, OHU_BACK_HIGH, (t0 + t1) / 2), a)
+    end
+    ol(g, -W, yh, zb, W, yh, zb, HW_HI, lw, a * 0.45)           -- lower rear edge catches light
+    ol(g, -W, yh, zh, -W, yh, zb, HW_DARK, lw, a)               -- side edges
+    ol(g, W, yh, zh, W, yh, zb, HW_DARK, lw, a)
+    ol(g, -W, yh, zb, -W, top, zb, HW_DARK, lw, a)
+    ol(g, W, yh, zb, W, top, zb, HW_DARK, lw, a)
+
+    -- Cooling vents either side of the identification plate.
+    for j = 0, 3 do
+        local y = yh + 1.4 + j * 0.9
+        ol(g, -10.2, y, zb, -4.8, y, zb, HW_DARK, math.max(1.5, 1.6 * k), a * 0.9)
+        ol(g, 4.8, y, zb, 10.2, y, zb, HW_DARK, math.max(1.5, 1.6 * k), a * 0.9)
+    end
+    -- Identification plate (original XPHUD marking, not an Airbus or vendor mark).
+    local py0, py1 = yh + 1.9, yh + 4.1
+    oq(g, -3.6, py0, zb, 3.6, py0, zb, 3.6, py1, zb, -3.6, py1, zb, HW_BODY, a)
+    ol(g, -3.6, py0, zb, 3.6, py0, zb, HW_EDGE, lw, a * 0.6)
+    ol(g, -3.6, py1, zb, 3.6, py1, zb, HW_DARK, lw, a)
+    local lx, ly = g.O(0, (py0 + py1) / 2, zb)
+    draw_text(lx, text_top_centred(ly, 0.8 * k), "XPHUD  A32X", HW_HI, 0.8 * k, 0)
+
+    local ppc_rear = g.ppc * g.d / zb
+    for _, sx in ipairs({ -1, 1 }) do
+        for _, y in ipairs({ yh + 1.0, top - 1.0 }) do
+            local fx, fy_ = g.O(sx * (W - 1.0), y, zb)
+            hw_fastener(fx, fy_, 0.38 * ppc_rear, k, a)
+        end
+    end
+end
+
+-- Hinge bar and the two pivot blocks that join the overhead unit to the frame.
+-- These stay in place while the glass swings.
+local function draw_hinge(g, k, a)
+    local hw, bar, rw = HW.glass_hw, HW.hinge_bar, HW.rail_w
+    local ox = hw + rw
     local edge = math.max(1, 1.2 * k)
+    local n = 4
+    for i = 0, n - 1 do
+        pq(g, -ox, bar * i / n, ox, bar * (i + 1) / n,
+           lerp_col({ 0.24, 0.255, 0.265 }, { 0.045, 0.05, 0.055 }, (i + 0.5) / n), a)
+    end
+    pl(g, -ox, 0.04, ox, 0.04, HW_HI, edge, a * 0.55)
+    pl(g, -ox, bar, ox, bar, HW_DARK, edge, a)
 
-    -- Upper protective hood / crossbar with chamfered ends.
-    d_quad_f(x1 + 0.055*S, y1 - 0.050*S,
-             x2 - 0.055*S, y1 - 0.050*S,
-             x2 - 0.020*S, y1 + 0.012*S,
-             x1 + 0.020*S, y1 + 0.012*S, HW_BODY, a * 0.94)
-    hw_line(x1 + 0.065*S, y1 - 0.043*S, x2 - 0.065*S, y1 - 0.043*S, HW_HI, edge, a * 0.52)
-    hw_line(x1 + 0.025*S, y1 + 0.006*S, x2 - 0.025*S, y1 + 0.006*S, HW_DARK, edge, a)
-    hw_fastener(x1 + 0.105*S, y1 - 0.018*S, 0.007*S, k, a)
-    hw_fastener(x2 - 0.105*S, y1 - 0.018*S, 0.007*S, k, a)
+    for _, side in ipairs({ -1, 1 }) do
+        local xi, xo = side * ox, side * (ox + 1.7)
+        pq(g, xi, -0.5, xo, 2.9, HW_BODY, a)
+        pl(g, xi, -0.5, xo, -0.5, HW_HI, edge, a * 0.5)
+        pl(g, xo, -0.5, xo, 2.9, HW_DARK, edge, a)
+        pl(g, xi, 2.9, xo, 2.9, HW_DARK, edge, a)
+        local px, py = g.P(side * (ox + 0.85), 1.2)
+        local qx = g.P(side * (ox + 0.85) + 0.55, 1.2)
+        local r = math.abs(qx - px)
+        d_circle_f(px, py, r, HW_DARK, a)
+        d_circle(px, py, r, HW_EDGE, edge)
+        d_circle_f(px, py, r * 0.45, HW_BODY, a)
+        d_line_a(px - r * 0.3, py, px + r * 0.3, py, HW_HI, edge, a * 0.85)
+    end
+end
 
-    -- Side rails and small retaining lips. Keep the rails just outside the
-    -- transparent aperture so they do not mask symbology or scenery.
-    for _, side in ipairs({-1, 1}) do
-        local x = (side < 0) and x1 or x2
-        local xo = x + side * 0.026*S
-        d_quad_f(xo - side*0.010*S, y1 + 0.105*S,
-                 xo + side*0.010*S, y1 + 0.105*S,
-                 xo + side*0.010*S, y2 - 0.085*S,
-                 xo - side*0.010*S, y2 - 0.085*S, HW_BODY, a * 0.88)
-        hw_line(xo - side*0.007*S, y1 + 0.12*S, xo - side*0.007*S, y2 - 0.10*S,
-                HW_HI, edge, a * 0.38)
-        hw_line(xo + side*0.010*S, y1 + 0.12*S, xo + side*0.010*S, y2 - 0.10*S,
-                HW_DARK, edge, a)
-        -- Clamp tabs at upper and lower ends of each side rail.
-        d_quad_f(xo - 0.030*S, y1 + 0.12*S, xo + 0.030*S, y1 + 0.12*S,
-                 xo + 0.030*S, y1 + 0.17*S, xo - 0.030*S, y1 + 0.17*S, HW_BODY, a)
-        d_quad_f(xo - 0.030*S, y2 - 0.17*S, xo + 0.030*S, y2 - 0.17*S,
-                 xo + 0.030*S, y2 - 0.12*S, xo - 0.030*S, y2 - 0.12*S, HW_BODY, a)
-        hw_fastener(xo, y1 + 0.145*S, 0.006*S, k, a)
-        hw_fastener(xo, y2 - 0.145*S, 0.006*S, k, a)
+-- Frame around the glass: side rails, lower rail and a latch tab.
+local function draw_frame(g, k, a)
+    local hw, L, bar, rw, rb = HW.glass_hw, HW.glass_len, HW.hinge_bar, HW.rail_w, HW.rail_bot
+    local ox = hw + rw
+    local edge = math.max(1, 1.2 * k)
+    for _, side in ipairs({ -1, 1 }) do
+        pq(g, side * hw, bar, side * ox, L + rb, HW_BODY, a)
+        pl(g, side * (hw + 0.2), bar, side * (hw + 0.2), L, HW_DARK, edge, a)
+        pl(g, side * (hw + 0.55), bar, side * (hw + 0.55), L, HW_HI, edge, a * 0.35)
+    end
+    pq(g, -ox, L, ox, L + rb, HW_BODY, a)
+    pl(g, -ox, L + 0.12, ox, L + 0.12, HW_HI, edge, a * 0.5)
+    pl(g, -ox, L + rb, ox, L + rb, HW_DARK, edge, a)
+    local ax, ay = g.P(-2.4, L + rb)
+    local bx, by = g.P(2.4, L + rb)
+    local cx2, cy2 = g.P(1.7, L + rb + 1.0)
+    local dx, dy = g.P(-1.7, L + rb + 1.0)
+    d_quad_f(ax, ay, bx, by, cx2, cy2, dx, dy, HW_BODY, a)
+    d_line_a(dx, dy, cx2, cy2, HW_DARK, edge, a)
+    local fx, fy_ = g.P(0, L + rb + 0.5)
+    local fr = math.abs(g.P(0.28, L + rb + 0.5) - fx)
+    hw_fastener(fx, fy_, fr, k, a)
+end
+
+-- Glass: faint tint, soft shadow under the hinge, reflection streaks, edge.
+local function draw_glass(g, k, ga)
+    if not cfg.show_glass or ga <= 0.001 then return end
+    local hw, L, bar = HW.glass_hw, HW.glass_len, HW.hinge_bar
+
+    -- Night mode suppresses pane tint and edge reflections, not the flight
+    -- symbology. This is a visual aid only; it is not photometric adaptation.
+    local night_glass = cfg.night_profile and 0.32 or 1.0
+    local tint = clamp(cfg.glass_alpha or 0.035, 0, 0.18) * night_glass * ga
+    if tint > 0.001 then pq(g, -hw, bar, hw, L, GLASS_TINT, tint) end
+
+    local night_edge = cfg.night_profile and 0.55 or 1.0
+    local edge = clamp(cfg.glass_edge_alpha or 0.22, 0, 0.8) * night_edge * ga
+    if edge <= 0.001 then return end
+    local w = math.max(1.0, 1.0 * k)
+
+    -- The overhead unit shades the top of the pane.
+    if cfg.show_hardware then
+        local n = 6
+        for i = 0, n - 1 do
+            pq(g, -hw, bar + 3.4 * i / n, hw, bar + 3.4 * (i + 1) / n, { 0, 0, 0 },
+               0.20 * (1 - (i + 0.5) / n) * ga * (cfg.night_profile and 0.6 or 1.0))
+        end
     end
 
-    -- Lower cross member and glass retaining channel.
-    d_quad_f(x1 + 0.075*S, y2 + 0.006*S*hardware_scale,
-             x2 - 0.075*S, y2 + 0.006*S*hardware_scale,
-             x2 - 0.095*S, y2 + 0.043*S*hardware_scale,
-             x1 + 0.095*S, y2 + 0.043*S*hardware_scale, HW_BODY, a * 0.92)
-    hw_line(x1 + 0.09*S, y2 + 0.009*S*hardware_scale, x2 - 0.09*S, y2 + 0.009*S*hardware_scale,
-            HW_HI, edge, a * 0.45)
-    hw_line(x1 + 0.10*S, y2 + 0.038*S*hardware_scale, x2 - 0.10*S, y2 + 0.038*S*hardware_scale,
-            HW_DARK, edge, a)
-
-    -- Hinge barrels: three knuckles, each with a pin highlight and end cap.
-    for _, px in ipairs({cx - 0.30*S, cx, cx + 0.30*S}) do
-        d_quad_f(px - 0.045*S, y2 + 0.035*S*hardware_scale, px + 0.045*S, y2 + 0.035*S*hardware_scale,
-                 px + 0.045*S, y2 + 0.075*S*hardware_scale, px - 0.045*S, y2 + 0.075*S*hardware_scale,
-                 HW_DARK, a)
-        hw_line(px - 0.038*S, y2 + 0.042*S*hardware_scale, px + 0.038*S, y2 + 0.042*S*hardware_scale,
-                HW_EDGE, edge, a)
-        d_circle_f(px - 0.040*S, y2 + 0.055*S*hardware_scale, 0.009*S, HW_BODY, a)
-        d_circle_f(px + 0.040*S, y2 + 0.055*S*hardware_scale, 0.009*S, HW_BODY, a)
+    -- Reflection streaks (cabin light on the glass) and a pale glareshield
+    -- reflection low in the pane.  Strength follows the glass edge opacity.
+    local refl = edge * 0.30
+    local function streak(x0, wd, shift, a2)
+        local ax, ay = g.P(x0, bar)
+        local bx, by = g.P(x0 + wd, bar)
+        local cx2, cy2 = g.P(x0 + wd + shift, L)
+        local dx, dy = g.P(x0 + shift, L)
+        d_quad_f(ax, ay, bx, by, cx2, cy2, dx, dy, GLASS_HI, a2)
+    end
+    streak(-8.6, 2.4, 7.5, refl * 0.40)
+    streak(-5.4, 0.9, 7.5, refl * 0.28)
+    local n = 5
+    for i = 0, n - 1 do
+        pq(g, -hw, L - 3.0 + 3.0 * i / n, hw, L - 3.0 + 3.0 * (i + 1) / n, GLASS_HI,
+           refl * 0.20 * (i + 0.5) / n)
     end
 
-    -- Twin angled support arms converge on a compact central mounting foot.
-    d_quad_f(cx - 0.105*S, y2 + 0.070*S*hardware_scale, cx - 0.070*S, y2 + 0.070*S*hardware_scale,
-             cx - 0.028*S, y2 + 0.155*S*hardware_scale, cx - 0.068*S, y2 + 0.155*S*hardware_scale, HW_BODY, a)
-    d_quad_f(cx + 0.070*S, y2 + 0.070*S*hardware_scale, cx + 0.105*S, y2 + 0.070*S*hardware_scale,
-             cx + 0.068*S, y2 + 0.155*S*hardware_scale, cx + 0.028*S, y2 + 0.155*S*hardware_scale, HW_BODY, a)
-    hw_line(cx - 0.087*S, y2 + 0.080*S*hardware_scale, cx - 0.052*S, y2 + 0.145*S*hardware_scale, HW_HI, edge, a * 0.50)
-    hw_line(cx + 0.087*S, y2 + 0.080*S*hardware_scale, cx + 0.052*S, y2 + 0.145*S*hardware_scale, HW_HI, edge, a * 0.50)
+    -- Perimeter and bevel.
+    pl(g, -hw, bar, hw, bar, GLASS_EDGE, w, edge)
+    pl(g, -hw, L, hw, L, GLASS_EDGE, w, edge)
+    pl(g, -hw, bar, -hw, L, GLASS_EDGE, w, edge)
+    pl(g, hw, bar, hw, L, GLASS_EDGE, w, edge)
+    local ins = 0.28
+    pl(g, -hw + ins, bar + ins, hw - ins, bar + ins, GLASS_HI, math.max(1, 0.65 * k), edge * 0.42)
+    pl(g, -hw + ins, bar + ins, -hw + ins, L - ins, GLASS_HI, math.max(1, 0.65 * k), edge * 0.30)
+    pl(g, -hw + ins, L - ins, hw - ins, L - ins, GLASS_SHADE, math.max(1, 0.8 * k), edge * 0.36)
+    pl(g, hw - ins, bar + ins, hw - ins, L - ins, GLASS_SHADE, math.max(1, 0.8 * k), edge * 0.30)
+    -- Cut edge of the glass along the bottom catches the light.
+    pl(g, -hw + 0.4, L - 0.06, hw - 0.4, L - 0.06, GLASS_HI, math.max(1.5, 1.4 * k), edge * 0.85)
+end
 
-    -- Pivot block and central adjustment knob.
-    d_quad_f(cx - 0.080*S, y2 + 0.145*S*hardware_scale, cx + 0.080*S, y2 + 0.145*S*hardware_scale,
-             cx + 0.095*S, y2 + 0.205*S*hardware_scale, cx - 0.095*S, y2 + 0.205*S*hardware_scale, HW_BODY, a)
-    hw_line(cx - 0.085*S, y2 + 0.151*S*hardware_scale, cx + 0.085*S, y2 + 0.151*S*hardware_scale, HW_HI, edge, a * 0.55)
-    d_circle_f(cx, y2 + 0.174*S*hardware_scale, 0.025*S, HW_DARK, a)
-    d_circle(cx, y2 + 0.174*S*hardware_scale, 0.025*S, HW_EDGE, edge)
-    d_circle_f(cx, y2 + 0.174*S*hardware_scale, 0.010*S, HW_BODY, a)
-    hw_line(cx - 0.014*S, y2 + 0.174*S*hardware_scale, cx + 0.014*S, y2 + 0.174*S*hardware_scale, HW_HI, edge, a)
+-- Draw the complete overhead unit + combiner for one frame.
+--   swing  0..1  combiner deploy swing (1 = deployed)
+--   fade   0..1  hardware fade-in while the unit powers up
+--   glow   0..1  brightness of the projector window (0 when nothing is valid)
+local function draw_combiner_assembly(cx, cy, S, k, swing, fade, glow)
+    local g = assembly_geometry(cx, cy, S, swing)
+    local ga = smoothstep(swing / 0.35)
 
-    -- Longer, slightly splayed stand-off struts: this gives the combiner assembly
-    -- more apparent forward clearance instead of making it look attached to the
-    -- pilot's face. It is a 2D depth cue, not a literal centimetre measurement.
-    local post_top = y2 + 0.190*S*hardware_scale
-    local post_bottom = mount_y - 0.010*S*hardware_scale
-    d_quad_f(cx - 0.110*S, post_top, cx - 0.080*S, post_top,
-             cx - 0.135*S, post_bottom, cx - 0.170*S, post_bottom, HW_BODY, a)
-    d_quad_f(cx + 0.080*S, post_top, cx + 0.110*S, post_top,
-             cx + 0.170*S, post_bottom, cx + 0.135*S, post_bottom, HW_BODY, a)
-    hw_line(cx - 0.103*S, post_top + 0.006*S*hardware_scale,
-            cx - 0.155*S, post_bottom, HW_HI, edge, a * 0.48)
-    hw_line(cx + 0.103*S, post_top + 0.006*S*hardware_scale,
-            cx + 0.155*S, post_bottom, HW_HI, edge, a * 0.48)
-    hw_line(cx - 0.080*S, post_top + 0.008*S*hardware_scale,
-            cx - 0.135*S, post_bottom, HW_DARK, edge, a * 0.85)
-    hw_line(cx + 0.080*S, post_top + 0.008*S*hardware_scale,
-            cx + 0.135*S, post_bottom, HW_DARK, edge, a * 0.85)
-
-    -- Rear shadow and wider mounting shoe at the lower end of the stand-off.
-    d_quad_f(cx - 0.225*S, mount_y - 0.006*S*hardware_scale,
-             cx + 0.225*S, mount_y - 0.006*S*hardware_scale,
-             cx + 0.225*S, mount_y + 0.030*S*hardware_scale,
-             cx - 0.225*S, mount_y + 0.030*S*hardware_scale, HW_SHADOW, a * 0.72)
-    d_quad_f(cx - 0.205*S, mount_y - 0.014*S*hardware_scale,
-             cx + 0.205*S, mount_y - 0.014*S*hardware_scale,
-             cx + 0.190*S, mount_y + 0.018*S*hardware_scale,
-             cx - 0.190*S, mount_y + 0.018*S*hardware_scale, HW_DARK, a)
-    hw_line(cx - 0.185*S, mount_y - 0.009*S*hardware_scale,
-            cx + 0.185*S, mount_y - 0.009*S*hardware_scale, HW_EDGE, edge, a * 0.78)
-    hw_line(cx - 0.175*S, mount_y + 0.014*S*hardware_scale,
-            cx + 0.175*S, mount_y + 0.014*S*hardware_scale, HW_DARK, edge, a)
-    hw_fastener(cx - 0.145*S, mount_y + 0.002*S*hardware_scale, 0.007*S, k, a)
-    hw_fastener(cx + 0.145*S, mount_y + 0.002*S*hardware_scale, 0.007*S, k, a)
-
-    -- End lugs with recessed locking slots on the mounting shoe.
-    for _, side in ipairs({-1, 1}) do
-        local lx = cx + side * 0.235*S
-        d_quad_f(lx - 0.027*S, mount_y - 0.006*S*hardware_scale,
-                 lx + 0.027*S, mount_y - 0.006*S*hardware_scale,
-                 lx + 0.027*S, mount_y + 0.016*S*hardware_scale,
-                 lx - 0.027*S, mount_y + 0.016*S*hardware_scale, HW_BODY, a * 0.92)
-        hw_line(lx - 0.010*S, mount_y + 0.005*S*hardware_scale,
-                lx + 0.010*S, mount_y + 0.005*S*hardware_scale, HW_DARK, math.max(1, k), a)
+    local a = 0
+    if cfg.show_hardware then
+        -- A night profile dims only the physical parts. The green HUD symbols
+        -- keep their independent "Symbology brightness" control.
+        local night_hardware = cfg.night_profile and 0.42 or 1.0
+        a = clamp(cfg.hardware_alpha or DEFAULTS.hardware_alpha, 0, 1) * night_hardware * fade
     end
-
-    -- Side hinge cheeks with concentric pivot caps and locking screws.
-    for _, side in ipairs({-1, 1}) do
-        local px = cx + side * 0.30*S
-        local py = y2 + 0.055*S*hardware_scale
-        d_quad_f(px - 0.060*S, py - 0.018*S*hardware_scale,
-                 px + 0.060*S, py - 0.018*S*hardware_scale,
-                 px + 0.060*S, py + 0.040*S*hardware_scale,
-                 px - 0.060*S, py + 0.040*S*hardware_scale, HW_BODY, a * 0.90)
-        hw_line(px - 0.050*S, py - 0.010*S*hardware_scale,
-                px + 0.050*S, py - 0.010*S*hardware_scale, HW_HI, edge, a * 0.48)
-        d_circle_f(px, py + 0.010*S*hardware_scale, 0.025*S, HW_DARK, a)
-        d_circle(px, py + 0.010*S*hardware_scale, 0.025*S, HW_EDGE, edge)
-        d_circle_f(px, py + 0.010*S*hardware_scale, 0.010*S, HW_BODY, a)
-        hw_line(px - 0.006*S, py + 0.010*S*hardware_scale,
-                px + 0.006*S, py + 0.010*S*hardware_scale, HW_HI, edge, a * 0.85)
-        hw_fastener(px + side * 0.043*S, py + 0.030*S*hardware_scale, 0.0055*S, k, a)
+    if a > 0.01 then draw_overhead_unit(g, k, a, glow) end
+    draw_glass(g, k, ga)
+    if a > 0.01 then
+        if ga > 0.02 then draw_frame(g, k, a * ga) end
+        draw_hinge(g, k, a)
     end
+    return g
+end
 
-    -- Recessed machining channels on the two support arms.
-    hw_line(cx - 0.074*S, y2 + 0.090*S*hardware_scale,
-            cx - 0.050*S, y2 + 0.137*S*hardware_scale, HW_DARK, math.max(1, 1.5*k), a * 0.80)
-    hw_line(cx + 0.074*S, y2 + 0.090*S*hardware_scale,
-            cx + 0.050*S, y2 + 0.137*S*hardware_scale, HW_DARK, math.max(1, 1.5*k), a * 0.80)
-    hw_line(cx - 0.050*S, y2 + 0.137*S*hardware_scale,
-            cx + 0.050*S, y2 + 0.137*S*hardware_scale, HW_EDGE, edge, a * 0.45)
+-- Calibration pattern: level-attitude symbols drawn with the live drawing code,
+-- plus the boresight and the glass perimeter, for checking centring and scale
+-- against the cockpit view.  Replaces the live symbology while it is shown.
+local calibration_on = false
 
+local function draw_calibration(g, cx, cy, S, k, th)
+    draw_horizon(cx, cy, S, k, th, 0, 0)
+    draw_bank(cx, cy, S, k, th, 0, 0)
+    draw_center(cx, cy, S, th)
+    local thin = math.max(1, th * 0.5)
+    d_line_a(cx - 0.45 * S, cy, cx + 0.45 * S, cy, COL.caution, thin, 0.6)
+    d_line_a(cx, cy - 0.45 * S, cx, cy + 0.45 * S, COL.caution, thin, 0.6)
+    local q = g.glass
+    for i = 1, 4 do
+        local a, b = q[i], q[(i % 4) + 1]
+        d_line_a(a[1], a[2], b[1], b[2], COL.caution, thin, 0.9)
+    end
+    draw_text(cx, cy + 0.30 * S, "CALIBRATION - LEVEL ATTITUDE", COL.caution, 0.9 * k, 0, true)
+    draw_text(cx, cy + 0.30 * S + 16 * k, "boresight, horizon, bank scale and glass outline",
+              COL.units, 0.75 * k, 0, true)
 end
 
 local FLAP_LABEL = { [0] = "0", "1", "2", "3", "FULL" }
@@ -1748,7 +1937,7 @@ local function draw_debug(cx, cy, S, k)
                                         v and string.format("%.2f", v) or "n/a")
     end
     if D.hdg_sel_t ~= nil and D.hdg_sel_x ~= nil then
-        local hdg_delta = ((D.hdg_sel_t - D.hdg_sel_x + 540) % 360) - 180
+        local hdg_delta = wrap180(D.hdg_sel_t - D.hdg_sel_x)
         rows[#rows + 1] = string.format("HDG T-X d  %+0.2f deg", hdg_delta)
     end
     rows[#rows + 1] = string.format("HDG source  %s", SRC.hdg_sel or "-")
@@ -1759,7 +1948,7 @@ local function draw_debug(cx, cy, S, k)
     if gs > 2.5 then
         local g = math.deg(atan2(D.vy or 0, gs))
         local tr = math.deg(atan2(D.vx or 0, -(D.vz or 0)))
-        local dr = ((tr - (D.psi_true or 0)) + 540) % 360 - 180
+        local dr = wrap180(tr - (D.psi_true or 0))
         rows[#rows + 1] = string.format("FPV xplane g=%.1f d=%.1f", g, dr)
     end
     for i = 1, 3 do
@@ -1812,11 +2001,6 @@ local function set_display_target(visible)
             DISPLAY_ANIM.started = now
         end
     end
-end
-
-local function smoothstep(t)
-    t = clamp(t, 0, 1)
-    return t * t * (3 - 2 * t)
 end
 
 local function display_animation()
@@ -1886,7 +2070,9 @@ local function draw_hud_elements(deploy_progress, show_splash)
                   and SRC.pitch ~= "-" and SRC.roll ~= "-"
     local v_hdg = D.hdg ~= nil and SRC.hdg ~= "-"
     local w, h = SCREEN_WIDTH, SCREEN_HIGHT
-    local S = math.min(cfg.size, math.min(w, h) * 0.9)
+    -- "Eye distance" scales the whole assembly (glass, symbology, hardware):
+    -- the further from the pilot's face, the smaller it is drawn.
+    local S = math.min(cfg.size, math.min(w, h) * 0.9) * eye_scale()
     local cx = clamp(w / 2 + (cfg.pos_x or 0), 0, w)
     local cy = clamp(h / 2 + (cfg.pos_y or 0), 0, h)
     local k = S / 500
@@ -1897,20 +2083,29 @@ local function draw_hud_elements(deploy_progress, show_splash)
         return
     end
 
-    -- During stow/deploy the pane and its support move together in screen space.
-    -- This is an illustrative 2D animation, not a 3D hinge or eye-point model.
+    -- Deploy / stow: the overhead unit fades in, the combiner swings down on its
+    -- hinge, and only then does the symbology fade in.  Illustrative only; it
+    -- does not read or drive any real HUD mechanism.
     local p = clamp(deploy_progress or 1, 0, 1)
     if p <= 0 then return end
-    local assembly_scale = 0.86 + 0.14 * p
-    local assembly_cy = cy + (1 - p) * 0.12 * S
-    local symbol_alpha = smoothstep((p - 0.38) / 0.62)
+    local swing = smoothstep(p / 0.7)
+    local fade = smoothstep(p / 0.15)
+    local symbol_alpha = smoothstep((p - 0.7) / 0.3)
+
+    -- Hardware and glass are not dimmed by the symbology brightness control.
+    -- With nothing valid (aircraft unpowered / ADIRS off) a real HUD is dark:
+    -- the projector window stays unlit but the combiner remains visible.
+    local powered = v_ias or v_alt or v_att or v_hdg
+    MASTER_A = 1.0
+    local g = draw_combiner_assembly(cx, cy, S, k, swing, fade,
+                                     powered and (cfg.hud_alpha or 1.0) * symbol_alpha or 0)
     MASTER_A = (cfg.hud_alpha or 1.0) * symbol_alpha
 
-    -- nothing valid at all: the aircraft is unpowered / the ADIRS are off, and a
-    -- real HUD is dark then. The combiner hardware can still be seen deploying.
-    draw_combiner_hardware(cx, assembly_cy, S * assembly_scale, k * assembly_scale)
-    draw_combiner(cx, assembly_cy, S * assembly_scale, k * assembly_scale)
-    if not (v_ias or v_alt or v_att or v_hdg) then
+    if calibration_on then
+        draw_calibration(g, cx, cy, S, k, th)
+        return
+    end
+    if not powered then
         if cfg.show_debug then draw_debug(cx, cy, S, k) end
         return
     end
@@ -2147,13 +2342,16 @@ local function settings_body()
     if changed then cfg.hide_external = v; settings_dirty = true end
     changed, v = imgui.Checkbox("Glass combiner / edge", cfg.show_glass)
     if changed then cfg.show_glass = v; settings_dirty = true end
-    changed, v = imgui.Checkbox("Combiner support / mounting hardware", cfg.show_hardware)
+    changed, v = imgui.Checkbox("Overhead unit, hinge and combiner frame", cfg.show_hardware)
     if changed then cfg.show_hardware = v; settings_dirty = true end
-    changed, v = imgui.SliderFloat("Hardware shading opacity", cfg.hardware_alpha, 0.0, 1.0, "%.2f")
+    changed, v = imgui.SliderFloat("Hardware opacity", cfg.hardware_alpha, 0.0, 1.0, "%.2f")
     if changed then cfg.hardware_alpha = v; settings_dirty = true end
-    changed, v = imgui.SliderFloat("Mount stand-off (visual cm)", cfg.mount_standoff_cm, 0.0, 8.0, "%.1f")
-    if changed then cfg.mount_standoff_cm = v; settings_dirty = true end
-    caption("Stand-off is a 2D depth cue, not a measured cockpit dimension.")
+    changed, v = imgui.SliderFloat("Eye distance (visual cm)", cfg.eye_distance_cm, 45, 120, "%.0f")
+    if changed then cfg.eye_distance_cm = v; settings_dirty = true end
+    caption("Larger = the combiner sits further from the pilot's face (drawn smaller,")
+    caption("with less perspective). A 2D depth cue, not a measured cockpit dimension.")
+    changed, v = imgui.Checkbox("Calibration pattern (replaces symbology, not saved)", calibration_on)
+    if changed then calibration_on = v end
     changed, v = imgui.Checkbox("Night visual profile (dim glass and frame)", cfg.night_profile)
     if changed then cfg.night_profile = v; settings_dirty = true end
     caption("Night profile softens the physical overlay; adjust symbol brightness separately.")
@@ -2337,5 +2535,19 @@ do_every_frame("xa32_sync_visible()")
 function xa32_diag_tick() diag_tick() end
 do_every_frame("xa32_diag_tick()")
 do_often("xa32_autosave()")
+
+-- Test seam: only exposed when a test harness sets XPHUD_TEST_HOOKS before
+-- loading the script.  Nothing is added to the global table in the simulator.
+if rawget(_G, "XPHUD_TEST_HOOKS") then
+    xa32_test = {
+        cfg = cfg, DEFAULTS = DEFAULTS, PREFS_VERSION = PREFS_VERSION,
+        wrap180 = wrap180, wrap360 = wrap360,
+        save_prefs = save_prefs, load_prefs = load_prefs, migrate_prefs = migrate_prefs,
+        prefs_file = prefs_file, write_file_atomic = write_file_atomic,
+        assembly_geometry = assembly_geometry, eye_scale = eye_scale,
+        smoothstep = smoothstep, HW = HW,
+        set_calibration = function(v) calibration_on = v and true or false end,
+    }
+end
 
 logMsg(EDITION .. ": started")

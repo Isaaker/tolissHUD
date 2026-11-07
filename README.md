@@ -1,6 +1,6 @@
 # XPHUD — ToLiss A32X Edition
 
-**Version 2.2.0** · Maintained by **Control_TWR**  
+**Version 2.3.0** · Maintained by **Control_TWR**  
 An unofficial Airbus-inspired head-up display for **ToLiss A319 / A320 / A321** aircraft in **X-Plane 12**, implemented as a FlyWithLua script.
 
 This edition is derived from **XPHUD for FlyWithLua v2.0.0 by xbard**. It is an independent community modification and is not affiliated with, endorsed by, or supported by xbard, XPConnect, ToLiss, Airbus, or Laminar Research.
@@ -19,7 +19,7 @@ Current symbology includes:
 - ILS localizer and glideslope raw-deviation scales, plus an ILS front-course reference on the heading scale.
 - Radio altitude, vertical speed, Mach, ground speed and barometric setting.
 - Adjustable translucent combiner pane, edge and bevel, with a restrained night visual profile.
-- Stylised 2D support with adjustable stand-off depth cue, mounting shoe, angled struts, hinges and fasteners.
+- Stylised 2D overhead unit with a hinged combiner drawn in perspective, an adjustable eye distance, frame rails and fasteners.
 - Brief XPHUD startup splash and animated 2D combiner deploy / stow sequence; both can be disabled in settings.
 - Optional dataref diagnostics and data-unavailable flags.
 
@@ -55,7 +55,11 @@ Commands for keyboard / joystick assignment:
 The shared dataref `XPHUD_A32X/Visible` is an integer dataref that can be read or written by other scripts to control HUD visibility.
 
 Settings are saved automatically to `Output/preferences/xphud_toliss_a32x.prefs`.
-Loaded preference values are checked against the supported ranges and options; invalid values are reported in the FlyWithLua log and safely reset or clamped.
+Loaded preference values are checked against the supported ranges and options; invalid values are reported in the FlyWithLua log and safely reset or clamped. The file is versioned and older files are migrated on load; it is written through a temporary file so an interrupted save cannot replace good preferences with a partial one.
+
+### Previewing without the simulator
+
+`python3 tools/preview_hud.py out.png` runs the script against a FlyWithLua mock and renders a PNG over a stand-in cockpit scene (needs `lua5.4` or the `lupa` package, plus Playwright). Options include `--pref eye_distance_cm=100`, `--progress 0.4` for the deploy animation, `--scene night`, `--unpowered` and `--calibration`. `lua5.4 tests/lua/run_tests.lua` runs the offline Lua tests. The stand-in scene is not ToLiss artwork.
 
 Scalar datarefs are read using the type reported by X-Plane (`int`, `float` or `double`). FlyWithLua builds that do not expose `XPLMGetDataRefTypes` are reported in the log and will not feed untyped scalar values to the HUD.
 
@@ -72,7 +76,7 @@ Use the settings panel to adjust:
 
 The combiner is a visual approximation: faint tint, clipped corners, perimeter, bevel and highlight. It does not simulate a physical optical combiner, collimation, parallax, eye tracking, electronic boresighting or the real HUD's optical infinity.
 
-An optional **Combiner support / mounting hardware** layer adds a stylised 2D upper hood, side retaining rails and clamps, lower glass channel, hinge barrels, angled stand-off struts, pivot block and a wider mounting shoe. **Mount stand-off (visual cm)** lengthens the projected support to suggest more clearance between the pilot and the combiner; it does not translate the panel in 3D or represent a measured cockpit dimension. **Night visual profile** dims the pane tint, edge reflections and physical frame while leaving symbology brightness under its separate control. This is a manual visual aid, not automatic luminance adaptation and not a photometric or operational simulation. The **Startup splash screen** shows the original XPHUD identity for about 1.8 seconds at script start. **Animate combiner deploy / stow** adds a short screen-space movement and fades the symbology as the assembly moves. These effects are illustrative only: they do not operate or read the aircraft's real HUD mechanism, and the startup mark is XPHUD branding rather than the Airbus corporate logo.
+An optional **Overhead unit, hinge and combiner frame** layer draws the hardware the way a real installation is arranged: an overhead unit above the pilot's head and a combiner hanging from its front edge on a hinge. It is drawn in the 2D FlyWithLua layer with a simple perspective model, so the glass leans slightly and converges more the closer it is. **Eye distance (visual cm)** moves the whole assembly (glass, symbology and hardware) away from or toward the pilot's face by scaling it; it is not a translation in 3D and not a measured cockpit dimension. Use **Hardware opacity** for the frame and the **Calibration pattern** checkbox (not saved) to check centring and scale. **Night visual profile** dims the pane tint, edge reflections and physical frame while leaving symbology brightness under its separate control. This is a manual visual aid, not automatic luminance adaptation and not a photometric or operational simulation. The **Startup splash screen** shows the original XPHUD identity for about 1.8 seconds at script start. **Animate combiner deploy / stow** adds a short screen-space movement and fades the symbology as the assembly moves. These effects are illustrative only: they do not operate or read the aircraft's real HUD mechanism, and the startup mark is XPHUD branding rather than the Airbus corporate logo.
 
 FlyWithLua's bitmap-font drawing functions do not expose glyph alpha like the primitive drawing API. **Symbology brightness** therefore changes font brightness, while glass opacity changes the actual transparency of the pane and edge primitives.
 
@@ -172,7 +176,7 @@ This repository includes GitHub Actions for Lua syntax / tooling CI, secret scan
 
 ### TODO.md → GitHub Issues
 
-`TODO.md` remains the source of truth. On changes to `TODO.md` pushed to `main`, the workflow creates or updates **one GitHub Issue per numbered `###` subsection containing checkboxes** (not one issue per checkbox). Stable markers prevent duplicates. Completing all checkboxes closes the matching issue; unchecking a task reopens it at the next synchronisation. Orphaned issues are not deleted. A manual workflow run defaults to dry-run; choose `apply: true` to write changes. The initial push of this TODO file to `main` will create 48 Issues for the currently open roadmap sections (the already-completed section is skipped); run the local dry-run command first if you want to inspect the proposed titles and bodies before pushing.
+`TODO.md` remains the source of truth. On changes to `TODO.md` pushed to `main`, the workflow creates or updates **one GitHub Issue per numbered `###` subsection containing checkboxes** (not one issue per checkbox). Stable markers prevent duplicates. Completing all checkboxes closes the matching issue; unchecking a task reopens it at the next synchronisation. Orphaned issues are not deleted. A manual workflow run defaults to dry-run; choose `apply: true` to write changes. The initial push of this TODO file to `main` will create 50 Issues for the currently open roadmap sections (the already-completed section is skipped); run the local dry-run command first if you want to inspect the proposed titles and bodies before pushing.
 
 ### Releases and SkunkCrafts Updater
 

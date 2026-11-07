@@ -62,9 +62,9 @@ The following describes the code as reviewed, not a claim that every item is alr
 - [x] FMA text extraction from ToLiss string datarefs; monochrome merge of colour layers.
 - [x] Radio altitude, VS, Mach, GS and barometric readouts.
 - [x] Combiner tint, edge, bevel and user-position / size controls.
-- [x] Stylised 2D mounting hardware with adjustable projected stand-off, angled support struts, hinge details and mounting shoe.
+- [x] Stylised 2D hardware (superseded in 2.3.0): overhead unit fixed above the pilot with a hinged combiner hanging from it, drawn in perspective with an adjustable eye distance. The earlier glareshield-mounted shoe and struts were removed.
 - [x] Manual night visual profile that softens glass reflections and hardware independently of HUD symbology brightness.
-- [ ] Verify stand-off / mounting proportions and night readability in the ToLiss A320neo cockpit at day, dusk and night; current hardware is a screen-space visual approximation, not an eye-point-correct 3D installation.
+- [ ] Verify overhead-unit / combiner proportions, default eye distance (70 cm) and night readability in the ToLiss A320neo cockpit at day, dusk and night; the hardware is a screen-space visual approximation, not an eye-point-correct 3D installation.
 - [x] Add optional XPHUD startup splash and 2D combiner deploy / stow animation.
 - [ ] Verify startup timing, deploy / stow direction, clipping and readability in the simulator at the user's normal cockpit view.
 - [x] Diagnostics panel and automatic preference persistence.
@@ -520,14 +520,16 @@ FAST 46 describes distinct HUD display modes for taxi, take-off, climb/cruise/de
 ### 8.5 Combiner and view calibration
 
 - [x] Make it clear that the current panel is a screen-space visual combiner, not a true HUD optical unit (README wording present).
-- [x] Add an optional 2D hardware illustration around the combiner: upper hood, side rails/clamps, lower retaining channel, hinge knuckles, support arms, pivot block and mounting foot. Adjustable visibility/opacity; explicitly illustrative and screen-space only.
-- [ ] Separate symbology anchor, combiner frame geometry and clipping region; they currently share one centre/size assumption.
-- [ ] Add a calibration pattern for centre boresight, horizon level, known pitch/bank and the combiner perimeter.
+- [x] Add an optional 2D hardware illustration (2.3.0 redraw): overhead unit with projector window, rear face and identification plate; hinge bar, pivot blocks, side/lower frame rails and latch tab. Adjustable visibility/opacity; explicitly illustrative and screen-space only.
+- [x] Combiner deploy / stow swings the glass down on its hinge in perspective; the hardware is no longer dimmed by the symbology brightness control.
+- [x] Eye-to-combiner distance setting (45–120 cm, default 70) scales glass, symbology and hardware together and sets the perspective convergence.
+- [x] Separate symbology anchor from combiner frame geometry: `assembly_geometry()` projects the glass, frame and overhead unit; tests assert the glass encloses the symbology area at every supported distance and size. (A clipping region is still open: FlyWithLua has no scissor primitive.)
+- [x] Add a calibration pattern for centre boresight, horizon level, known pitch/bank and the combiner perimeter (settings checkbox, not saved). Needs checking against a real cockpit view in the simulator.
 - [ ] Store calibration profiles by display resolution / aspect ratio / aircraft and cockpit view where practicable.
 - [ ] Prevent symbols from drawing outside the combiner polygon.
 - [ ] Make edge/bevel strength, tint and text brightness independent and avoid any opaque glass fill.
 - [ ] Confirm alpha blending on supported X-Plane / FlyWithLua combinations and check the rest of the simulator rendering is not affected.
-- [ ] Evaluate an optional native plugin / 3D cockpit implementation for true world-conformal projection and pilot eye-point geometry; keep it as a separate architectural milestone.
+- [ ] Evaluate an optional native plugin / 3D cockpit implementation for true world-conformal projection and pilot eye-point geometry; keep it as a separate architectural milestone. (Project decision 2026-11-07: stay Lua-only for now.)
 - [ ] For VR, do not claim correct collimation or parallax with a single 2D desktop overlay. Require stereo-aware rendering and per-eye calibration if support is ever attempted.
 
 **Acceptance criteria (M6):**
@@ -577,8 +579,8 @@ FAST 56 describes the A320 Family L5 HUD standard (certified in February 2015) a
   - settings UI;
   - diagnostics / logging.
 - [ ] Keep drawing functions pure where practical: pass a snapshot and geometry; do not read datarefs from inside draw helpers.
-- [ ] Keep all conversion and wrap functions in one utility section/module.
-- [ ] Add versioned preferences with a migration path when settings names or meanings change.
+- [x] Keep all conversion and wrap functions in one utility section/module: every bearing wrap now uses `wrap180()` / `wrap360()` (unit-tested). Other unit conversions are still open.
+- [x] Add versioned preferences with a migration path when settings names or meanings change (`prefs_version`, `PREF_MIGRATIONS`; v1→v2 retires `mount_standoff_cm`).
 - [ ] Add a compatibility guard for FlyWithLua features / X-Plane versions; fail visibly but safely if required drawing APIs are absent.
 - [ ] Add an explicit debug mode that never changes flight-system state.
 
@@ -591,7 +593,7 @@ FAST 56 describes the A320 Family L5 HUD standard (certified in February 2015) a
 - [ ] Guard every renderer group against missing/invalid values; one bad dataref must not blank the whole HUD.
 - [ ] Verify callback behaviour during pause, replay, time acceleration, plugin reload, aircraft reload and settings close/open.
 - [ ] Restore or isolate OpenGL state as safely as FlyWithLua allows.
-- [ ] Ensure preferences are written atomically or recover gracefully from a partial file.
+- [x] Ensure preferences are written atomically (temporary file + rename, with the Windows replace case handled) or recover gracefully from a partial file (end marker, per-key validation). Windows rename fallback still needs a real-Windows check.
 
 **Acceptance criteria (M8):**
 
@@ -600,6 +602,8 @@ FAST 56 describes the A320 Family L5 HUD standard (certified in February 2015) a
 - [ ] Each supported aircraft has a documented dataref/profile status.
 
 ### 10.4 Cockpit-mounted HUD hardware [P2 / native integration]
+
+> **Deferred (2026-11-07):** the project stays Lua-only. The 2D perspective overhead unit in 8.5 is the chosen approach; the items below remain open only if a native plugin is ever reconsidered.
 
 The current FlyWithLua renderer is a screen-space overlay and cannot attach an OBJ to the cockpit. A physical-looking support and combiner fixed to the aircraft requires a separately installable native X-Plane integration; adding an OBJ file alone is not sufficient. Do not modify or redistribute ToLiss aircraft files, or describe the result as a collimated/certified HUD.
 
@@ -700,8 +704,9 @@ A feature is not “done” until it has a reproducible simulator test and a rec
 
 ## 12. Automated tests and tooling
 
-- [ ] Create pure-Lua tests for:
-  - `wrap180()` / `wrap360()`;
+- [x] Offline Lua harness (`tests/lua/`): FlyWithLua mock, draw-call recorder, SVG renderer and `run_tests.lua` (wraps, geometry invariants, drawing, animation, preferences migration/recovery). Run in CI.
+- [ ] Create further pure-Lua tests for:
+  - ~~`wrap180()` / `wrap360()`~~ (done);
   - unit conversions;
   - true/magnetic reference handling;
   - FPA and track calculations;
@@ -711,8 +716,8 @@ A feature is not “done” until it has a reproducible simulator test and a rec
   - HDG/TRK selected-target mapping;
   - phase-state transitions and hysteresis;
   - perspective projection helpers, if M4 proceeds.
-- [ ] Run tests in the same Lua version / subset used by FlyWithLua (avoid depending on newer Lua syntax unless supported).
-- [ ] Add a fake dataref layer / recorded snapshot playback so calculations can be tested without a live flight.
+- [ ] Run tests in the same Lua version / subset used by FlyWithLua (avoid depending on newer Lua syntax unless supported). The harness uses Lua 5.4; FlyWithLua embeds LuaJIT (5.1 semantics) in some builds, so confirm there.
+- [x] Add a fake dataref layer so drawing can be tested without a live flight (`tests/lua/fwl_mock.lua`); recorded-snapshot playback is still open.
 - [ ] Add golden test snapshots for known cases: level 0° drift, 10° right drift, 3° climb, 3° descent, heading wrap, LOC centre/full-scale and G/S centre/full-scale.
 - [ ] Add a release smoke-test script that checks required files, Lua syntax where tooling is available, version strings and ZIP contents.
 - [ ] Record known test gaps honestly in each release.

@@ -23,7 +23,7 @@ The same article describes different display modes for taxi, take-off, climb / c
 
 ## Current implementation mapping
 
-| Airbus concept | XPHUD v2.2.0 status |
+| Airbus concept | XPHUD v2.3.0 status |
 |---|---|
 | Pitch / roll / attitude ladder | Approximation implemented |
 | FPV / bird and drift | Implemented using ToLiss PFD outputs when available, otherwise X-Plane inertial velocity |

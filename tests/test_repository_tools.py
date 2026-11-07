@@ -51,15 +51,26 @@ class TodoParserTests(unittest.TestCase):
         self.assertIn("[ ]", body)
         self.assertIn("Checklist progress", body)
 
+    # A synthetic TODO keeps these tests independent of how much of the real
+    # TODO.md happens to be ticked off at any moment.
+    SAMPLE = "## 1. Sample\n\n### 1.1 Finished\n\n- [x] done\n\n### 1.2 Open\n\n- [x] done\n- [ ] pending\n"
+
+    def _sample_groups(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "TODO.md"
+            path.write_text(self.SAMPLE, encoding="utf-8")
+            return todo_to_issues.parse_todo(path)
+
     def test_completed_untracked_sections_are_not_created(self):
-        groups = todo_to_issues.parse_todo(ROOT / "TODO.md")
+        groups = self._sample_groups()
         completed = next(group for group in groups if group.complete)
         stats = todo_to_issues.sync([completed], todo_to_issues.GitHubAPI("dry", "run", ""), apply=False)
         self.assertEqual(stats["create"], 0)
         self.assertEqual(stats["completed_skipped"], 1)
 
     def test_dry_run_requires_no_token(self):
-        groups = todo_to_issues.parse_todo(ROOT / "TODO.md")
+        groups = self._sample_groups()
         stats = todo_to_issues.sync(groups[:2], todo_to_issues.GitHubAPI("dry", "run", ""), apply=False)
         self.assertEqual(stats["create"], 1)
         self.assertEqual(stats["completed_skipped"], 1)
@@ -143,6 +154,28 @@ class ReleaseBuilderTests(unittest.TestCase):
                 self.assertTrue(any(name.endswith("/xphud_toliss_a32x.lua") for name in names))
                 self.assertTrue(any(name.endswith("/skunkcrafts_updater.cfg") for name in names))
                 self.assertFalse(any("TODO.md" in name for name in names))
+
+
+class LuaHarnessTests(unittest.TestCase):
+    """Run the offline Lua suite (tests/lua/run_tests.lua) when a Lua is available."""
+
+    def test_lua_suite(self):
+        import shutil
+        import subprocess
+        runner = ROOT / "tests" / "lua" / "run_tests.lua"
+        lua = shutil.which("lua5.4") or shutil.which("lua")
+        if lua:
+            proc = subprocess.run([lua, str(runner)], cwd=ROOT, capture_output=True, text=True)
+            self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+            self.assertIn("0 failed", proc.stdout)
+            return
+        try:
+            from lupa.lua54 import LuaRuntime
+        except ImportError:
+            self.skipTest("no lua5.4 binary or lupa module available")
+        runtime = LuaRuntime()
+        runtime.execute("arg = {[0] = ...}", str(runner))
+        runtime.execute("dofile(arg[0])")
 
 
 if __name__ == "__main__":
