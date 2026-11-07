@@ -18,7 +18,8 @@ Current symbology includes:
 - Heading / track scale, selected heading bug and drift reference.
 - ILS localizer and glideslope raw-deviation scales, plus an ILS front-course reference on the heading scale.
 - Radio altitude, vertical speed, Mach, ground speed and barometric setting.
-- Adjustable translucent combiner pane, edge and bevel.
+- Adjustable translucent combiner pane, edge and bevel, with a restrained night visual profile.
+- Stylised 2D support with adjustable stand-off depth cue, mounting shoe, angled struts, hinges and fasteners.
 - Optional dataref diagnostics and data-unavailable flags.
 
 The upstream-derived `modern` and `classic` palettes are retained, but the default is the Airbus-style green theme.
@@ -70,7 +71,7 @@ Use the settings panel to adjust:
 
 The combiner is a visual approximation: faint tint, clipped corners, perimeter, bevel and highlight. It does not simulate a physical optical combiner, collimation, parallax, eye tracking, electronic boresighting or the real HUD's optical infinity.
 
-An optional **Combiner support / mounting hardware** layer adds a stylised 2D upper hood, side retaining rails and clamps, lower glass channel, hinge barrels, twin support arms, pivot block and mounting foot. Use **Hardware shading opacity** to soften or strengthen the metal treatment. This is deliberately an illustrative screen-space effect, not a dimensionally accurate representation of the ToLiss cockpit or a 3D-mounted part; it does not alter the combiner's optical behaviour.
+An optional **Combiner support / mounting hardware** layer adds a stylised 2D upper hood, side retaining rails and clamps, lower glass channel, hinge barrels, angled stand-off struts, pivot block and a wider mounting shoe. **Mount stand-off (visual cm)** lengthens the projected support to suggest more clearance between the pilot and the combiner; it does not translate the panel in 3D or represent a measured cockpit dimension. **Night visual profile** dims the pane tint, edge reflections and physical frame while leaving symbology brightness under its separate control. This is a manual visual aid, not automatic luminance adaptation and not a photometric or operational simulation.
 
 FlyWithLua's bitmap-font drawing functions do not expose glyph alpha like the primitive drawing API. **Symbology brightness** therefore changes font brightness, while glass opacity changes the actual transparency of the pane and edge primitives.
 
