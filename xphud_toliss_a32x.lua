@@ -506,7 +506,7 @@ local DIAG_HEADER = table.concat({
     "sample_id", "local_time", "sim_running_time_s", "xphud_version",
     "aircraft_profile", "sample_kind", "hud_key", "provider", "dataref_path",
     "xplm_type_mask", "reader_type", "raw_value", "text_value",
-    "selected_for_hud", "selected_source"
+    "selected_input_path", "input_source"
 }, ",")
 
 local function diag_write_line(path, line, mode)
@@ -519,6 +519,8 @@ local function diag_write_line(path, line, mode)
 end
 
 local function diag_capture(kind)
+    -- Refresh the sample even when the HUD overlay itself is hidden.
+    read_inputs()
     if not diag_file_path then
         diag_file_path = diag_new_path()
         if not diag_write_line(diag_file_path, DIAG_HEADER, "w") then
