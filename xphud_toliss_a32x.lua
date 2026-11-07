@@ -1792,7 +1792,7 @@ function xa32_open_settings()
     end
     if settings_open and settings_wnd then return end
     settings_wnd = float_wnd_create(560, 760, 1, true)
-    float_wnd_set_title(settings_wnd, "XPHUD 2.1.0 ToLiss A32X edition")
+    float_wnd_set_title(settings_wnd, EDITION)
     float_wnd_set_imgui_builder(settings_wnd, "xa32_settings_builder")
     float_wnd_set_onclose(settings_wnd, "xa32_settings_onclose")
     settings_open = true
