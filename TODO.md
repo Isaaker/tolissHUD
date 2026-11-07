@@ -716,7 +716,7 @@ A feature is not “done” until it has a reproducible simulator test and a rec
 ## 13. Documentation, project release and community support
 
 - [ ] Keep `README.md` feature claims aligned with the verified support matrix; mark experimental features clearly.
-- [ ] Link this `TODO.md` from the README.
+- [x] Link this `TODO.md` from the README. The README's Development roadmap section already links to it.
 - [ ] Keep `AIRBUS_HUD_NOTES.md` as a research summary, not as an Airbus specification.
 - [ ] Add `DATAREF_AUDIT.md` with actual source/type/unit/validity results per aircraft version.
 - [ ] Add `TESTING.md` with simulator scenario instructions and a template for user-reported test results.
