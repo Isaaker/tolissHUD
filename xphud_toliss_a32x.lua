@@ -71,9 +71,11 @@ local DEFAULTS = {
     plate_alpha    = 0.0,     -- dark backing behind individual readouts (0 = off)
     show_glass     = true,    -- draw the transparent combiner pane and its subtle edge
     show_hardware  = true,    -- draw the 2D combiner support, hinge blocks and mounting bracket
-    hardware_alpha = 0.82,    -- physical hardware shading opacity
-    glass_alpha    = 0.045,  -- subtle pane tint; keep low to preserve outside visibility
-    glass_edge_alpha = 0.28, -- combiner edge / reflection opacity
+    hardware_alpha = 0.72,    -- physical hardware shading opacity
+    mount_standoff_cm = 4.0,  -- visual depth cue; not a measured cockpit dimension
+    night_profile  = false,   -- soften frame and glass edge for dark scenes
+    glass_alpha    = 0.035,  -- subtle pane tint; keep low to preserve outside visibility
+    glass_edge_alpha = 0.22, -- combiner edge / reflection opacity
     theme          = "green", -- green | modern | classic
     fpv_src        = "auto",  -- auto (ToLiss PFD values) | xplane (inertial vector from the sim)
     ladder_deg     = 15,      -- degrees of pitch that span 0.4 * HUD size
@@ -121,6 +123,8 @@ local PREF_BOUNDS = {
     text_scale = { 0.7, 2.5 },
     hud_alpha = { 0.2, 1 },
     plate_alpha = { 0, 1 },
+    hardware_alpha = { 0, 1 },
+    mount_standoff_cm = { 0, 8 },
     glass_alpha = { 0, 0.18 },
     glass_edge_alpha = { 0, 0.8 },
     ladder_deg = { 8, 30 },
@@ -1473,7 +1477,10 @@ local function draw_combiner(cx, cy, S, k)
         {x2 - c, y2}, {x1 + c, y2}, {x1, y2 - c}, {x1, y1 + c},
     }
 
-    local tint = clamp(cfg.glass_alpha or 0.045, 0, 0.18)
+    -- Night mode suppresses pane tint and edge reflections, not the flight
+    -- symbology. This is a visual aid only; it is not photometric adaptation.
+    local night_glass = cfg.night_profile and 0.32 or 1.0
+    local tint = clamp(cfg.glass_alpha or 0.035, 0, 0.18) * night_glass
     if tint > 0.001 then
         for i = 1, #pts do
             local j = (i % #pts) + 1
@@ -1481,7 +1488,8 @@ local function draw_combiner(cx, cy, S, k)
         end
     end
 
-    local edge = clamp(cfg.glass_edge_alpha or 0.28, 0, 0.8)
+    local night_edge = cfg.night_profile and 0.55 or 1.0
+    local edge = clamp(cfg.glass_edge_alpha or 0.22, 0, 0.8) * night_edge
     if edge <= 0.001 then return end
     local w = math.max(1.0, 1.0 * k)
 
@@ -1539,14 +1547,23 @@ end
 
 local function draw_combiner_hardware(cx, cy, S, k)
     if not cfg.show_hardware then return end
-    local a = clamp(cfg.hardware_alpha or 0.82, 0, 1)
+    -- A night profile dims only the physical frame. The green HUD symbols retain
+    -- their independent "Symbology brightness" control.
+    local night_hardware = cfg.night_profile and 0.42 or 1.0
+    local a = clamp(cfg.hardware_alpha or 0.72, 0, 1) * night_hardware
     if a <= 0.01 then return end
 
     local x1, x2 = cx - 0.515 * S, cx + 0.515 * S
     local y1, y2 = cy - 0.535 * S, cy + 0.485 * S
     local c = 0.026 * S
-    -- Compress the bracket vertically when the HUD is near the lower screen edge.
-    local hardware_scale = clamp((SH - y2 - 8) / (0.235 * S), 0, 1)
+    -- The adjustable stand-off is represented by longer 2D support struts.
+    -- It gives a little more apparent clearance from the pilot, but cannot
+    -- reproduce a real translation in depth or eye-point parallax.
+    local stand_off = clamp(cfg.mount_standoff_cm or 4.0, 0, 8) / 8
+    local mount_drop = 0.235 + 0.070 * stand_off
+    -- Compress the bracket vertically if the HUD is close to the lower screen edge.
+    local hardware_scale = clamp((SH - y2 - 8) / (mount_drop * S), 0, 1)
+    local mount_y = y2 + mount_drop * S * hardware_scale
     local w = math.max(1.2, 0.0045 * S)
     local edge = math.max(1, 1.2 * k)
 
@@ -1611,36 +1628,59 @@ local function draw_combiner_hardware(cx, cy, S, k)
     hw_line(cx - 0.087*S, y2 + 0.080*S*hardware_scale, cx - 0.052*S, y2 + 0.145*S*hardware_scale, HW_HI, edge, a * 0.50)
     hw_line(cx + 0.087*S, y2 + 0.080*S*hardware_scale, cx + 0.052*S, y2 + 0.145*S*hardware_scale, HW_HI, edge, a * 0.50)
 
-    -- Pivot block, central adjustment knob and base plate.
+    -- Pivot block and central adjustment knob.
     d_quad_f(cx - 0.080*S, y2 + 0.145*S*hardware_scale, cx + 0.080*S, y2 + 0.145*S*hardware_scale,
              cx + 0.095*S, y2 + 0.205*S*hardware_scale, cx - 0.095*S, y2 + 0.205*S*hardware_scale, HW_BODY, a)
     hw_line(cx - 0.085*S, y2 + 0.151*S*hardware_scale, cx + 0.085*S, y2 + 0.151*S*hardware_scale, HW_HI, edge, a * 0.55)
     d_circle_f(cx, y2 + 0.174*S*hardware_scale, 0.025*S, HW_DARK, a)
     d_circle(cx, y2 + 0.174*S*hardware_scale, 0.025*S, HW_EDGE, edge)
+    d_circle_f(cx, y2 + 0.174*S*hardware_scale, 0.010*S, HW_BODY, a)
     hw_line(cx - 0.014*S, y2 + 0.174*S*hardware_scale, cx + 0.014*S, y2 + 0.174*S*hardware_scale, HW_HI, edge, a)
-    d_quad_f(cx - 0.15*S, y2 + 0.205*S*hardware_scale, cx + 0.15*S, y2 + 0.205*S*hardware_scale,
-             cx + 0.18*S, y2 + 0.235*S*hardware_scale, cx - 0.18*S, y2 + 0.235*S*hardware_scale, HW_DARK, a)
-    hw_line(cx - 0.14*S, y2 + 0.209*S*hardware_scale, cx + 0.14*S, y2 + 0.209*S*hardware_scale, HW_EDGE, edge, a * 0.75)
-    hw_fastener(cx - 0.12*S, y2 + 0.221*S*hardware_scale, 0.006*S, k, a)
-    hw_fastener(cx + 0.12*S, y2 + 0.221*S*hardware_scale, 0.006*S, k, a)
 
-    -- Reinforced rear plate and triangular gussets give the mount a layered profile.
-    d_quad_f(cx - 0.19*S, y2 + 0.226*S*hardware_scale,
-             cx + 0.19*S, y2 + 0.226*S*hardware_scale,
-             cx + 0.19*S, y2 + 0.246*S*hardware_scale,
-             cx - 0.19*S, y2 + 0.246*S*hardware_scale, HW_SHADOW, a * 0.72)
-    d_quad_f(cx - 0.155*S, y2 + 0.235*S*hardware_scale,
-             cx - 0.105*S, y2 + 0.235*S*hardware_scale,
-             cx - 0.055*S, y2 + 0.170*S*hardware_scale,
-             cx - 0.092*S, y2 + 0.170*S*hardware_scale, HW_DARK, a * 0.92)
-    d_quad_f(cx + 0.105*S, y2 + 0.235*S*hardware_scale,
-             cx + 0.155*S, y2 + 0.235*S*hardware_scale,
-             cx + 0.092*S, y2 + 0.170*S*hardware_scale,
-             cx + 0.055*S, y2 + 0.170*S*hardware_scale, HW_DARK, a * 0.92)
-    hw_line(cx - 0.145*S, y2 + 0.232*S*hardware_scale,
-            cx - 0.090*S, y2 + 0.178*S*hardware_scale, HW_EDGE, edge, a * 0.55)
-    hw_line(cx + 0.145*S, y2 + 0.232*S*hardware_scale,
-            cx + 0.090*S, y2 + 0.178*S*hardware_scale, HW_EDGE, edge, a * 0.55)
+    -- Longer, slightly splayed stand-off struts: this gives the combiner assembly
+    -- more apparent forward clearance instead of making it look attached to the
+    -- pilot's face. It is a 2D depth cue, not a literal centimetre measurement.
+    local post_top = y2 + 0.190*S*hardware_scale
+    local post_bottom = mount_y - 0.010*S*hardware_scale
+    d_quad_f(cx - 0.110*S, post_top, cx - 0.080*S, post_top,
+             cx - 0.135*S, post_bottom, cx - 0.170*S, post_bottom, HW_BODY, a)
+    d_quad_f(cx + 0.080*S, post_top, cx + 0.110*S, post_top,
+             cx + 0.170*S, post_bottom, cx + 0.135*S, post_bottom, HW_BODY, a)
+    hw_line(cx - 0.103*S, post_top + 0.006*S*hardware_scale,
+            cx - 0.155*S, post_bottom, HW_HI, edge, a * 0.48)
+    hw_line(cx + 0.103*S, post_top + 0.006*S*hardware_scale,
+            cx + 0.155*S, post_bottom, HW_HI, edge, a * 0.48)
+    hw_line(cx - 0.080*S, post_top + 0.008*S*hardware_scale,
+            cx - 0.135*S, post_bottom, HW_DARK, edge, a * 0.85)
+    hw_line(cx + 0.080*S, post_top + 0.008*S*hardware_scale,
+            cx + 0.135*S, post_bottom, HW_DARK, edge, a * 0.85)
+
+    -- Rear shadow and wider mounting shoe at the lower end of the stand-off.
+    d_quad_f(cx - 0.225*S, mount_y - 0.006*S*hardware_scale,
+             cx + 0.225*S, mount_y - 0.006*S*hardware_scale,
+             cx + 0.225*S, mount_y + 0.030*S*hardware_scale,
+             cx - 0.225*S, mount_y + 0.030*S*hardware_scale, HW_SHADOW, a * 0.72)
+    d_quad_f(cx - 0.205*S, mount_y - 0.014*S*hardware_scale,
+             cx + 0.205*S, mount_y - 0.014*S*hardware_scale,
+             cx + 0.190*S, mount_y + 0.018*S*hardware_scale,
+             cx - 0.190*S, mount_y + 0.018*S*hardware_scale, HW_DARK, a)
+    hw_line(cx - 0.185*S, mount_y - 0.009*S*hardware_scale,
+            cx + 0.185*S, mount_y - 0.009*S*hardware_scale, HW_EDGE, edge, a * 0.78)
+    hw_line(cx - 0.175*S, mount_y + 0.014*S*hardware_scale,
+            cx + 0.175*S, mount_y + 0.014*S*hardware_scale, HW_DARK, edge, a)
+    hw_fastener(cx - 0.145*S, mount_y + 0.002*S*hardware_scale, 0.007*S, k, a)
+    hw_fastener(cx + 0.145*S, mount_y + 0.002*S*hardware_scale, 0.007*S, k, a)
+
+    -- End lugs with recessed locking slots on the mounting shoe.
+    for _, side in ipairs({-1, 1}) do
+        local lx = cx + side * 0.235*S
+        d_quad_f(lx - 0.027*S, mount_y - 0.006*S*hardware_scale,
+                 lx + 0.027*S, mount_y - 0.006*S*hardware_scale,
+                 lx + 0.027*S, mount_y + 0.016*S*hardware_scale,
+                 lx - 0.027*S, mount_y + 0.016*S*hardware_scale, HW_BODY, a * 0.92)
+        hw_line(lx - 0.010*S, mount_y + 0.005*S*hardware_scale,
+                lx + 0.010*S, mount_y + 0.005*S*hardware_scale, HW_DARK, math.max(1, k), a)
+    end
 
     -- Side hinge cheeks with concentric pivot caps and locking screws.
     for _, side in ipairs({-1, 1}) do
@@ -1668,16 +1708,6 @@ local function draw_combiner_hardware(cx, cy, S, k)
     hw_line(cx - 0.050*S, y2 + 0.137*S*hardware_scale,
             cx + 0.050*S, y2 + 0.137*S*hardware_scale, HW_EDGE, edge, a * 0.45)
 
-    -- Small locking lugs and recessed slot marks on the base plate.
-    for _, side in ipairs({-1, 1}) do
-        local lx = cx + side * 0.205*S
-        local ly = y2 + 0.225*S*hardware_scale
-        d_quad_f(lx - 0.028*S, ly - 0.012*S*hardware_scale,
-                 lx + 0.028*S, ly - 0.012*S*hardware_scale,
-                 lx + 0.028*S, ly + 0.012*S*hardware_scale,
-                 lx - 0.028*S, ly + 0.012*S*hardware_scale, HW_BODY, a * 0.90)
-        hw_line(lx - 0.010*S, ly, lx + 0.010*S, ly, HW_DARK, math.max(1, k), a)
-    end
 end
 
 local FLAP_LABEL = { [0] = "0", "1", "2", "3", "FULL" }
@@ -2008,6 +2038,12 @@ local function settings_body()
     if changed then cfg.show_hardware = v; settings_dirty = true end
     changed, v = imgui.SliderFloat("Hardware shading opacity", cfg.hardware_alpha, 0.0, 1.0, "%.2f")
     if changed then cfg.hardware_alpha = v; settings_dirty = true end
+    changed, v = imgui.SliderFloat("Mount stand-off (visual cm)", cfg.mount_standoff_cm, 0.0, 8.0, "%.1f")
+    if changed then cfg.mount_standoff_cm = v; settings_dirty = true end
+    caption("Stand-off is a 2D depth cue, not a measured cockpit dimension.")
+    changed, v = imgui.Checkbox("Night visual profile (dim glass and frame)", cfg.night_profile)
+    if changed then cfg.night_profile = v; settings_dirty = true end
+    caption("Night profile softens the physical overlay; adjust symbol brightness separately.")
     changed, v = imgui.SliderFloat("HUD size px", cfg.size, 300, 1200, "%.0f")
     if changed then cfg.size = v; settings_dirty = true end
     if imgui.Button("Centre HUD") then xa32_center() end
