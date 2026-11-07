@@ -1535,6 +1535,8 @@ local function draw_combiner_hardware(cx, cy, S, k)
     local x1, x2 = cx - 0.515 * S, cx + 0.515 * S
     local y1, y2 = cy - 0.535 * S, cy + 0.485 * S
     local c = 0.026 * S
+    -- Compress the bracket vertically when the HUD is near the lower screen edge.
+    local hardware_scale = clamp((SH - y2 - 8) / (0.235 * S), 0, 1)
     local w = math.max(1.2, 0.0045 * S)
     local edge = math.max(1, 1.2 * k)
 
