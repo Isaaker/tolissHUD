@@ -143,7 +143,10 @@ ToLiss datarefs are resolved lazily and retried periodically because the aircraf
 - The overlay is drawn in screen coordinates. It is not a replacement for a native aircraft HUD, PFD, FMA or certified flight instrument.
 - This is a community simulation add-on for entertainment / training-environment visualisation only. It is **not approved for real-world flight use**.
 
+Under **DIAGNOSTICS** in the settings window, use **Capture diagnostic snapshot** for a one-off CSV or **Start CSV recording** / **Stop CSV recording** for approximately 1 Hz sampling. Files are saved in `Output/preferences/` as `XPHUD_A32X_diag_*.csv`. The collector is opt-in and read-only; it records raw candidate values, full paths, XPLM type masks when available, selected source and FMA strings. A manual snapshot during recording is appended to the same file.
+
 When reporting a problem, include your X-Plane version, FlyWithLua version, ToLiss aircraft / engine variant, the selected heading and ILS sources, and a diagnostic readout.
+
 
 ## Credits and licence
 
