@@ -614,13 +614,10 @@ local function diag_tick()
 end
 
 local function diag_snapshot()
-    local was_recording = diag_recording
-    if was_recording then diag_stop_recording() end
-    diag_file_path = nil
-    diag_sample_id = 0
-    local ok = diag_capture("snapshot")
-    if was_recording and ok then diag_start_recording() end
-    return ok
+    -- Append to the active session when recording; otherwise create a
+    -- standalone file. A manual snapshot must not interrupt a recording.
+    if not diag_file_path then diag_sample_id = 0 end
+    return diag_capture("snapshot")
 end
 
 -- ----------------------------------------------------------------- state --
@@ -2000,7 +1997,8 @@ add_macro("XPHUD A32X: settings window", "xa32_open_settings()")
 
 do_every_draw("xa32_draw()")
 do_every_frame("xa32_sync_visible()")
-do_every_frame("diag_tick()")
+function xa32_diag_tick() diag_tick() end
+do_every_frame("xa32_diag_tick()")
 do_often("xa32_autosave()")
 
 logMsg(EDITION .. ": started")
