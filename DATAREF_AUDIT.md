@@ -116,7 +116,7 @@ These paths are bound through FlyWithLua's string `dataref(..., "readonly")` mec
 3. **Type introspection is compatibility selection, not contract validation.** `scalar_reader()` chooses the first supported scalar type in the mask (float, double, int). The code does not yet compare the actual type against an expected per-input type because no expected-type map exists.
 4. **Fallback is based on nil, not validity/freshness.** If a ToLiss read returns a numeric zero, X-Plane fallback is not considered. This prevents accidental cross-source mixing in some cases, but cannot distinguish a legitimate zero from an orphaned or stale provider.
 5. **ILS source selection is not receiver-complete.** Deviation source, `ILSonCapt`, course, tuned frequency and ident are not yet represented as one resolved receiver contract. The current code can draw an ILS course from ToLiss while the selected deviation values come from X-Plane.
-6. **The current diagnostics only show values and T/X source labels.** They do not expose actual resolved path, type, unit, validity state or age.
+6. **The original live diagnostics only showed values and T/X source labels.** The new opt-in CSV collector now records candidate paths, runtime type masks, scalar reader type, raw values, selected-source flags and FMA strings. Units, validity semantics and age are still not established automatically.
 
 No code behaviour has been changed in this audit pass.
 
@@ -145,4 +145,29 @@ For each capture record: X-Plane version/build, ToLiss aircraft variant and exac
 
 ## 6. Outstanding user/environment detail
 
-The exact installed ToLiss A320neo aircraft version/build has not yet been supplied. Until it is known, this audit must not claim compatibility with a specific current ToLiss build. The community list is A321-oriented and dates from 2022; the supplied manuals describe the A320neo but are not DataRef specifications.
+The user reports using the latest available standard ToLiss A320neo. The exact build number is not yet captured by the plugin, so this audit must not claim compatibility with a specific numbered build. The community list is A321-oriented and dates from 2022; the supplied manuals describe the A320neo but are not DataRef specifications.
+
+## 7. In-simulator diagnostic CSV collector
+
+The normal FlyWithLua settings window now includes these controls under **DIAGNOSTICS**:
+
+- **Capture diagnostic snapshot:** writes one complete sample of every candidate scalar path and all nine FMA string paths.
+- **Start CSV recording / Stop CSV recording:** starts or stops opt-in collection at approximately one sample per wall-clock second. Recording is disabled by default.
+- A manual snapshot taken during recording is appended to the active session and does not interrupt it.
+
+Files are written to:
+
+`X-Plane/Output/preferences/XPHUD_A32X_diag_YYYYMMDD_HHMMSS.csv`
+
+The collector is read-only: it does not write ToLiss or X-Plane DataRefs. For every scalar candidate it attempts to record the raw value, provider (ToLiss/X-Plane), full path, XPLM type mask, selected scalar reader type and whether that path was selected by the HUD. It also records simulator running time, local timestamp, the configured aircraft-profile label and FMA text/layer paths.
+
+**Important limitations:**
+
+- The profile label is currently “ToLiss A320neo standard (latest installed; exact build not yet captured)”; it is not automatically verified from the aircraft.
+- The CSV does not yet infer units, sign conventions, validity or freshness. A plausible number is not proof of a correct/live value.
+- The collector samples at about 1 Hz, suitable for broad state comparisons but not high-resolution transient analysis.
+- XPLM type masks are recorded where the FlyWithLua runtime exposes `XPLMGetDataRefTypes`; a blank mask means the API did not return a value, not that the path is absent.
+- FMA text is recorded as returned by FlyWithLua after the script's existing printable-character sanitisation.
+- Local timestamps use the simulator computer's local clock. The simulator running-time field is the timebase to use when aligning samples within a session.
+
+**Suggested first capture sequence:** take a snapshot on the powered ground, start recording, then separately record IRS-aligned normal operation, HDG mode, TRK mode, ILS tuned with centred LOC/G/S, and a short segment with a small LOC/G/S displacement. Stop recording before changing to the next condition and note the condition externally. Do not deliberately create unsafe aircraft states for testing.
