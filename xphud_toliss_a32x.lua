@@ -1571,46 +1571,46 @@ local function draw_combiner_hardware(cx, cy, S, k)
     end
 
     -- Lower cross member and glass retaining channel.
-    d_quad_f(x1 + 0.075*S, y2 + 0.006*S,
-             x2 - 0.075*S, y2 + 0.006*S,
-             x2 - 0.095*S, y2 + 0.043*S,
-             x1 + 0.095*S, y2 + 0.043*S, HW_BODY, a * 0.92)
-    hw_line(x1 + 0.09*S, y2 + 0.009*S, x2 - 0.09*S, y2 + 0.009*S,
+    d_quad_f(x1 + 0.075*S, y2 + 0.006*S*hardware_scale,
+             x2 - 0.075*S, y2 + 0.006*S*hardware_scale,
+             x2 - 0.095*S, y2 + 0.043*S*hardware_scale,
+             x1 + 0.095*S, y2 + 0.043*S*hardware_scale, HW_BODY, a * 0.92)
+    hw_line(x1 + 0.09*S, y2 + 0.009*S*hardware_scale, x2 - 0.09*S, y2 + 0.009*S*hardware_scale,
             HW_HI, edge, a * 0.45)
-    hw_line(x1 + 0.10*S, y2 + 0.038*S, x2 - 0.10*S, y2 + 0.038*S,
+    hw_line(x1 + 0.10*S, y2 + 0.038*S*hardware_scale, x2 - 0.10*S, y2 + 0.038*S*hardware_scale,
             HW_DARK, edge, a)
 
     -- Hinge barrels: three knuckles, each with a pin highlight and end cap.
     for _, px in ipairs({cx - 0.30*S, cx, cx + 0.30*S}) do
-        d_quad_f(px - 0.045*S, y2 + 0.035*S, px + 0.045*S, y2 + 0.035*S,
-                 px + 0.045*S, y2 + 0.075*S, px - 0.045*S, y2 + 0.075*S,
+        d_quad_f(px - 0.045*S, y2 + 0.035*S*hardware_scale, px + 0.045*S, y2 + 0.035*S*hardware_scale,
+                 px + 0.045*S, y2 + 0.075*S*hardware_scale, px - 0.045*S, y2 + 0.075*S*hardware_scale,
                  HW_DARK, a)
-        hw_line(px - 0.038*S, y2 + 0.042*S, px + 0.038*S, y2 + 0.042*S,
+        hw_line(px - 0.038*S, y2 + 0.042*S*hardware_scale, px + 0.038*S, y2 + 0.042*S*hardware_scale,
                 HW_EDGE, edge, a)
-        d_circle_f(px - 0.040*S, y2 + 0.055*S, 0.009*S, HW_BODY, a)
-        d_circle_f(px + 0.040*S, y2 + 0.055*S, 0.009*S, HW_BODY, a)
+        d_circle_f(px - 0.040*S, y2 + 0.055*S*hardware_scale, 0.009*S, HW_BODY, a)
+        d_circle_f(px + 0.040*S, y2 + 0.055*S*hardware_scale, 0.009*S, HW_BODY, a)
     end
 
     -- Twin angled support arms converge on a compact central mounting foot.
-    d_quad_f(cx - 0.105*S, y2 + 0.070*S, cx - 0.070*S, y2 + 0.070*S,
-             cx - 0.028*S, y2 + 0.155*S, cx - 0.068*S, y2 + 0.155*S, HW_BODY, a)
-    d_quad_f(cx + 0.070*S, y2 + 0.070*S, cx + 0.105*S, y2 + 0.070*S,
-             cx + 0.068*S, y2 + 0.155*S, cx + 0.028*S, y2 + 0.155*S, HW_BODY, a)
-    hw_line(cx - 0.087*S, y2 + 0.080*S, cx - 0.052*S, y2 + 0.145*S, HW_HI, edge, a * 0.50)
-    hw_line(cx + 0.087*S, y2 + 0.080*S, cx + 0.052*S, y2 + 0.145*S, HW_HI, edge, a * 0.50)
+    d_quad_f(cx - 0.105*S, y2 + 0.070*S*hardware_scale, cx - 0.070*S, y2 + 0.070*S*hardware_scale,
+             cx - 0.028*S, y2 + 0.155*S*hardware_scale, cx - 0.068*S, y2 + 0.155*S*hardware_scale, HW_BODY, a)
+    d_quad_f(cx + 0.070*S, y2 + 0.070*S*hardware_scale, cx + 0.105*S, y2 + 0.070*S*hardware_scale,
+             cx + 0.068*S, y2 + 0.155*S*hardware_scale, cx + 0.028*S, y2 + 0.155*S*hardware_scale, HW_BODY, a)
+    hw_line(cx - 0.087*S, y2 + 0.080*S*hardware_scale, cx - 0.052*S, y2 + 0.145*S*hardware_scale, HW_HI, edge, a * 0.50)
+    hw_line(cx + 0.087*S, y2 + 0.080*S*hardware_scale, cx + 0.052*S, y2 + 0.145*S*hardware_scale, HW_HI, edge, a * 0.50)
 
     -- Pivot block, central adjustment knob and base plate.
-    d_quad_f(cx - 0.080*S, y2 + 0.145*S, cx + 0.080*S, y2 + 0.145*S,
-             cx + 0.095*S, y2 + 0.205*S, cx - 0.095*S, y2 + 0.205*S, HW_BODY, a)
-    hw_line(cx - 0.085*S, y2 + 0.151*S, cx + 0.085*S, y2 + 0.151*S, HW_HI, edge, a * 0.55)
-    d_circle_f(cx, y2 + 0.174*S, 0.025*S, HW_DARK, a)
-    d_circle(cx, y2 + 0.174*S, 0.025*S, HW_EDGE, edge)
-    hw_line(cx - 0.014*S, y2 + 0.174*S, cx + 0.014*S, y2 + 0.174*S, HW_HI, edge, a)
-    d_quad_f(cx - 0.15*S, y2 + 0.205*S, cx + 0.15*S, y2 + 0.205*S,
-             cx + 0.18*S, y2 + 0.235*S, cx - 0.18*S, y2 + 0.235*S, HW_DARK, a)
-    hw_line(cx - 0.14*S, y2 + 0.209*S, cx + 0.14*S, y2 + 0.209*S, HW_EDGE, edge, a * 0.75)
-    hw_fastener(cx - 0.12*S, y2 + 0.221*S, 0.006*S, k, a)
-    hw_fastener(cx + 0.12*S, y2 + 0.221*S, 0.006*S, k, a)
+    d_quad_f(cx - 0.080*S, y2 + 0.145*S*hardware_scale, cx + 0.080*S, y2 + 0.145*S*hardware_scale,
+             cx + 0.095*S, y2 + 0.205*S*hardware_scale, cx - 0.095*S, y2 + 0.205*S*hardware_scale, HW_BODY, a)
+    hw_line(cx - 0.085*S, y2 + 0.151*S*hardware_scale, cx + 0.085*S, y2 + 0.151*S*hardware_scale, HW_HI, edge, a * 0.55)
+    d_circle_f(cx, y2 + 0.174*S*hardware_scale, 0.025*S, HW_DARK, a)
+    d_circle(cx, y2 + 0.174*S*hardware_scale, 0.025*S, HW_EDGE, edge)
+    hw_line(cx - 0.014*S, y2 + 0.174*S*hardware_scale, cx + 0.014*S, y2 + 0.174*S*hardware_scale, HW_HI, edge, a)
+    d_quad_f(cx - 0.15*S, y2 + 0.205*S*hardware_scale, cx + 0.15*S, y2 + 0.205*S*hardware_scale,
+             cx + 0.18*S, y2 + 0.235*S*hardware_scale, cx - 0.18*S, y2 + 0.235*S*hardware_scale, HW_DARK, a)
+    hw_line(cx - 0.14*S, y2 + 0.209*S*hardware_scale, cx + 0.14*S, y2 + 0.209*S*hardware_scale, HW_EDGE, edge, a * 0.75)
+    hw_fastener(cx - 0.12*S, y2 + 0.221*S*hardware_scale, 0.006*S, k, a)
+    hw_fastener(cx + 0.12*S, y2 + 0.221*S*hardware_scale, 0.006*S, k, a)
 
 local FLAP_LABEL = { [0] = "0", "1", "2", "3", "FULL" }
 
