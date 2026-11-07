@@ -1499,6 +1499,16 @@ local function draw_combiner(cx, cy, S, k)
     d_line_a(x1 + c, y2 - inset, x2 - c, y2 - inset, GLASS_SHADE, math.max(1, 0.8 * k), edge * 0.36)
     d_line_a(x2 - inset, y1 + c, x2 - inset, y2 - c, GLASS_SHADE, math.max(1, 0.8 * k), edge * 0.30)
 
+    -- A second, extremely restrained inner gasket line makes the pane read
+    -- as laminated glass seated in a channel rather than a floating outline.
+    local gasket = inset * 2.2
+    d_line_a(x1 + c + gasket, y1 + gasket, x2 - c - gasket, y1 + gasket,
+             GLASS_SHADE, math.max(1, 0.55 * k), edge * 0.13)
+    d_line_a(x1 + gasket, y1 + c + gasket, x1 + gasket, y2 - c - gasket,
+             GLASS_HI, math.max(1, 0.45 * k), edge * 0.10)
+    d_line_a(x2 - gasket, y1 + c + gasket, x2 - gasket, y2 - c - gasket,
+             GLASS_SHADE, math.max(1, 0.45 * k), edge * 0.12)
+
     -- Very faint specular glint in the upper-right corner of the combiner.
     d_line_a(x2 - 0.19 * S, y1 + 0.035 * S, x2 - 0.055 * S, y1 + 0.17 * S,
              GLASS_HI, math.max(1, 0.75 * k), edge * 0.22)
@@ -1547,6 +1557,8 @@ local function draw_combiner_hardware(cx, cy, S, k)
              x1 + 0.020*S, y1 + 0.012*S, HW_BODY, a * 0.94)
     hw_line(x1 + 0.065*S, y1 - 0.043*S, x2 - 0.065*S, y1 - 0.043*S, HW_HI, edge, a * 0.52)
     hw_line(x1 + 0.025*S, y1 + 0.006*S, x2 - 0.025*S, y1 + 0.006*S, HW_DARK, edge, a)
+    hw_fastener(x1 + 0.105*S, y1 - 0.018*S, 0.007*S, k, a)
+    hw_fastener(x2 - 0.105*S, y1 - 0.018*S, 0.007*S, k, a)
 
     -- Side rails and small retaining lips. Keep the rails just outside the
     -- transparent aperture so they do not mask symbology or scenery.
