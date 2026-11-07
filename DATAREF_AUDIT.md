@@ -97,6 +97,18 @@ The following is the complete set of entries in the current `INPUTS` table in `x
 | `view_ext` | — | `sim/graphics/view/view_is_external` | XP external-view flag; type/polarity runtime-pending |
 | `running` | — | `sim/time/total_running_time_sec` | XP running-time seconds; type/runtime check pending |
 
+## 2.1 Additional string DataRefs used by the FMA
+
+The FMA reader constructs nine string paths dynamically; these are not part of the numeric `INPUTS` table and must be audited separately:
+
+| Group | Paths | Current audit status |
+|---|---|---|
+| FMA row 1 | `AirbusFBW/FMA1g`, `AirbusFBW/FMA1w`, `AirbusFBW/FMA1b` | Community name inventory includes the FMA family; string type, layer meaning, encoding and update behaviour require runtime verification |
+| FMA row 2 | `AirbusFBW/FMA2b`, `AirbusFBW/FMA2m`, `AirbusFBW/FMA2w` | Same; exact colour-layer semantics are currently merged by the HUD |
+| FMA row 3 | `AirbusFBW/FMA3a`, `AirbusFBW/FMA3b`, `AirbusFBW/FMA3w` | Same; exact colour-layer semantics are currently merged by the HUD |
+
+These paths are bound through FlyWithLua's string `dataref(..., "readonly")` mechanism, not the scalar XPLM getter path. The current code strips non-printable/non-ASCII characters and merges layers; this is a presentation decision, not proof that the source layers are semantically interchangeable.
+
 ## 3. Important code-level findings from this pass
 
 1. **A numeric zero is currently accepted as a successful read.** This is correct for legitimate values such as zero deviation, zero pitch or zero vertical speed, but it also means an orphaned/disabled provider returning zero can look like live data.
