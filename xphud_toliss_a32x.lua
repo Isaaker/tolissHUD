@@ -353,30 +353,40 @@ local INPUTS = {
     { "running",   {},                                          { "sim/time/total_running_time_sec" } },
 }
 
-local D, SRC = {}, {}        -- current values / where each came from (T, X or -)
+local D, SRC, SRC_PATH, SRC_TYPE = {}, {}, {}, {} -- values and selected source metadata
 
 local function read_inputs()
     for i = 1, #INPUTS do
         local e = INPUTS[i]
-        local val, src = nil, "-"
+        local val, src, selected_path, selected_type = nil, "-", nil, nil
         local tl, xp = e[2], e[3]
         for j = 1, #tl do
             local path = tl[j]
             local r = ref(path)
             local getter = r and scalar_reader(path, r)
-            if getter then val = getter(r); src = "T"; break end
+            if getter then
+                val = getter(r); src = "T"; selected_path = path
+                selected_type = scalar_readers[path] and scalar_readers[path].kind
+                break
+            end
         end
         if val == nil then
             for j = 1, #xp do
                 local path = xp[j]
                 local r = ref(path)
                 local getter = r and scalar_reader(path, r)
-                if getter then val = getter(r); src = "X"; break end
+                if getter then
+                    val = getter(r); src = "X"; selected_path = path
+                    selected_type = scalar_readers[path] and scalar_readers[path].kind
+                    break
+                end
             end
         end
         if val ~= nil and (val ~= val or val == math.huge or val == -math.huge) then val = nil end
         D[e[1]] = val
         SRC[e[1]] = src
+        SRC_PATH[e[1]] = selected_path
+        SRC_TYPE[e[1]] = selected_type
     end
 
     -- Select the FCU heading/track target.  ToLiss' APHDG_Capt has no public
@@ -459,6 +469,158 @@ local function read_str(path)
     local s = _G[v]
     if type(s) ~= "string" then return nil end
     return (s:gsub("[^\32-\126]", " "))
+end
+
+-- ------------------------------------------------------ diagnostic capture --
+-- Manual snapshots and a low-rate CSV recorder. No simulator datarefs are
+-- written. Collection is opt-in and files are saved under Output/preferences.
+local diag_recording = false
+local diag_last_sample = 0
+local diag_sample_id = 0
+local diag_file_path = nil
+local diag_error = nil
+local DIAG_AIRCRAFT_PROFILE = "ToLiss A320neo standard (latest installed; exact build not yet captured)"
+
+local function csv_cell(v)
+    if v == nil then return "" end
+    local s = tostring(v)
+    if s:find('[,\r\n"]') then return '"' .. s:gsub('"', '""') .. '"' end
+    return s
+end
+
+local function diag_new_path()
+    local base = (SYSTEM_DIRECTORY or "") .. "Output/preferences/"
+    local stamp = os.date("%Y%m%d_%H%M%S")
+    local path = base .. "XPHUD_A32X_diag_" .. stamp .. ".csv"
+    local suffix = 1
+    while true do
+        local f = io.open(path, "r")
+        if not f then return path end
+        f:close()
+        path = base .. "XPHUD_A32X_diag_" .. stamp .. "_" .. suffix .. ".csv"
+        suffix = suffix + 1
+    end
+end
+
+local DIAG_HEADER = table.concat({
+    "sample_id", "local_time", "sim_running_time_s", "xphud_version",
+    "aircraft_profile", "sample_kind", "hud_key", "provider", "dataref_path",
+    "xplm_type_mask", "reader_type", "raw_value", "text_value",
+    "selected_for_hud", "selected_source"
+}, ",")
+
+local function diag_write_line(path, line, mode)
+    local f, err = io.open(path, mode or "a")
+    if not f then diag_error = tostring(err); return false end
+    local ok, werr = f:write(line, "\n")
+    local cok, cerr = f:close()
+    if not ok or not cok then diag_error = tostring(werr or cerr); return false end
+    return true
+end
+
+local function diag_capture(kind)
+    if not diag_file_path then
+        diag_file_path = diag_new_path()
+        if not diag_write_line(diag_file_path, DIAG_HEADER, "w") then
+            diag_file_path = nil
+            return false
+        end
+    end
+    diag_sample_id = diag_sample_id + 1
+    local sample_id = diag_sample_id
+    local local_time = os.date("%Y-%m-%d %H:%M:%S")
+    local sim_time = D.running
+    local rows = {}
+    local function add_row(key, provider, path, raw, text_value, type_mask, reader_type, selected)
+        rows[#rows + 1] = table.concat({
+            csv_cell(sample_id), csv_cell(local_time), csv_cell(sim_time),
+            csv_cell(EDITION), csv_cell(DIAG_AIRCRAFT_PROFILE), csv_cell(kind),
+            csv_cell(key), csv_cell(provider), csv_cell(path), csv_cell(type_mask),
+            csv_cell(reader_type), csv_cell(raw), csv_cell(text_value),
+            csv_cell(selected and "1" or "0"), csv_cell(SRC[key])
+        }, ",")
+    end
+
+    for i = 1, #INPUTS do
+        local e = INPUTS[i]
+        local key = e[1]
+        for _, group in ipairs({ { "T", e[2] }, { "X", e[3] } }) do
+            local provider, paths = group[1], group[2]
+            for j = 1, #paths do
+                local path = paths[j]
+                local handle = ref(path)
+                local mask, value, reader_type
+                if handle and type(XPLMGetDataRefTypes) == "function" then
+                    local ok, result = pcall(XPLMGetDataRefTypes, handle)
+                    if ok then mask = result end
+                end
+                if handle then
+                    local getter = scalar_reader(path, handle)
+                    if getter then
+                        local ok, result = pcall(getter, handle)
+                        if ok and type(result) == "number"
+                            and result == result and result ~= math.huge and result ~= -math.huge then
+                            value = result
+                        end
+                        reader_type = scalar_readers[path] and scalar_readers[path].kind
+                    end
+                end
+                add_row(key, provider, path, value, nil, mask, reader_type,
+                        SRC_PATH[key] == path)
+            end
+        end
+    end
+
+    -- FMA values are strings and are deliberately recorded separately from
+    -- scalar DataRefs, preserving the exact path/layer and readable text.
+    for i = 1, 3 do
+        for _, layer in ipairs(FMA_LAYERS[i]) do
+            local path = "AirbusFBW/FMA" .. i .. layer
+            local value = read_str(path)
+            add_row("fma" .. i .. layer, "T", path, nil, value, "string", "string", false)
+        end
+    end
+
+    for i = 1, #rows do
+        if not diag_write_line(diag_file_path, rows[i], "a") then return false end
+    end
+    diag_error = nil
+    return true
+end
+
+local function diag_start_recording()
+    if diag_recording then return end
+    diag_file_path = nil
+    diag_sample_id = 0
+    if diag_capture("record_start") then
+        diag_recording = true
+        diag_last_sample = os.time()
+    end
+end
+
+local function diag_stop_recording()
+    if not diag_recording then return end
+    diag_capture("record_stop")
+    diag_recording = false
+end
+
+local function diag_tick()
+    if not diag_recording then return end
+    local now = os.time()
+    if now > diag_last_sample then
+        diag_last_sample = now
+        diag_capture("record")
+    end
+end
+
+local function diag_snapshot()
+    local was_recording = diag_recording
+    if was_recording then diag_stop_recording() end
+    diag_file_path = nil
+    diag_sample_id = 0
+    local ok = diag_capture("snapshot")
+    if was_recording and ok then diag_start_recording() end
+    return ok
 end
 
 -- ----------------------------------------------------------------- state --
@@ -1745,8 +1907,37 @@ local function settings_body()
     if changed then cfg.fd_roll_deg = v; settings_dirty = true end
 
     section("DIAGNOSTICS")
-    changed, v = imgui.Checkbox("Dataref readout (T = ToLiss, X = X-Plane, - = missing)", cfg.show_debug)
+    changed, v = imgui.Checkbox("Live HUD dataref readout", cfg.show_debug)
     if changed then cfg.show_debug = v; settings_dirty = true end
+    caption("Capture is read-only. CSV files are saved in Output/preferences/.")
+    caption("Includes raw ToLiss and X-Plane candidates, XPLM type masks,")
+    caption("selected source, FMA strings and simulator running time.")
+    if imgui.Button("Capture diagnostic snapshot") then
+        if diag_snapshot() then
+            logMsg("XPHUD A32X: diagnostic snapshot saved to " .. tostring(diag_file_path))
+        else
+            logMsg("XPHUD A32X: diagnostic snapshot failed: " .. tostring(diag_error))
+        end
+    end
+    if diag_recording then
+        imgui.SameLine()
+        if danger_button("Stop CSV recording") then diag_stop_recording() end
+        caption("Recording at approximately 1 sample/second.")
+    else
+        imgui.SameLine()
+        if imgui.Button("Start CSV recording") then
+            diag_start_recording()
+            if diag_recording then
+                logMsg("XPHUD A32X: diagnostic recording started: " .. tostring(diag_file_path))
+            else
+                logMsg("XPHUD A32X: diagnostic recording failed: " .. tostring(diag_error))
+            end
+        end
+    end
+    if diag_file_path then caption("Last file: " .. diag_file_path) end
+    if diag_error then caption("Capture error: " .. diag_error) end
+    caption("Record short test segments: powered ground, IRS aligned, HDG/TRK,")
+    caption("ILS tuned/untuned and LOC/GS deviations. Stop recording between tests.")
 
     section("")
     if imgui.Button("Save now") then save_prefs(); settings_dirty = false end
@@ -1809,6 +2000,7 @@ add_macro("XPHUD A32X: settings window", "xa32_open_settings()")
 
 do_every_draw("xa32_draw()")
 do_every_frame("xa32_sync_visible()")
+do_every_frame("diag_tick()")
 do_often("xa32_autosave()")
 
 logMsg(EDITION .. ": started")
