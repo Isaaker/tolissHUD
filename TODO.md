@@ -108,7 +108,7 @@ No new flight guidance symbol should be implemented until this milestone is comp
   - sample/update rate if known;
   - aircraft variants and minimum plugin/build tested;
   - confidence level A/B/C/D and evidence URL or test-log reference.
-- [ ] Add a `DATAREF_AUDIT.md` (or a generated section here) listing every active dataref, including those not yet used by a drawing function.
+- [x] Add `DATAREF_AUDIT.md` with the complete active `INPUTS` inventory, source paths, evidence limits and simulator verification requirements. (Initial static pass; runtime types/semantics remain open.)
 - [ ] Record unknown semantics as `UNKNOWN — TEST REQUIRED`; do not fill them by intuition or names alone.
 
 ### 2.2 Implement typed reads
